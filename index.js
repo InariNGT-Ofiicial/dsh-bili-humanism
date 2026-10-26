@@ -1,6 +1,11 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
 import { Service, safeError, readingView } from "./lib/service.mjs";
+import { DEFAULTS, loadSettings, mergeSettings } from "./lib/settings.mjs";
+import {
+  createSettingsApi,
+  registerSettingsRoutes,
+} from "./lib/settings-http.mjs";
 import { readFileSync } from "node:fs";
 import { need } from "./lib/errors.mjs";
 import { DEFAULT_READ_TOKENS } from "./lib/token-gate.mjs";
@@ -110,7 +115,21 @@ export const Config = z.object({
     ),
 });
 export function apply(ctx, config = {}) {
-  const service = new Service(config);
+  // A human-saved settings-page overlay wins over the profile config for the
+  // keys it lists. The overlay can never grant platform writes: the writer
+  // still checks the trusted policy file, device cookie and receipts.
+  const overlay = loadSettings(config);
+  const merged = mergeSettings(config, overlay.values);
+  if (overlay.error)
+    try {
+      ctx.logger?.warn(
+        `bili-humanism: settings overlay ignored (${overlay.error})`,
+      );
+    } catch {
+      // Logging is best-effort and must never block the plugin.
+    }
+  const service = new Service(merged);
+  const toolNames = new Set();
   const register = (
     name,
     description,
@@ -118,8 +137,9 @@ export function apply(ctx, config = {}) {
     execute,
     output,
     structured = false,
-  ) =>
-    ctx.tools.register(
+  ) => {
+    toolNames.add(name);
+    return ctx.tools.register(
       defineTool({
         name,
         description,
@@ -142,6 +162,7 @@ export function apply(ctx, config = {}) {
         },
       }),
     );
+  };
   const str = (description, required = true) => ({
     type: "string",
     description,
@@ -345,7 +366,7 @@ export function apply(ctx, config = {}) {
     },
     (a) => service.importLocal(a.readingId, JSON.parse(a.json)),
   );
-  if (config.enableHistoryWrites === true)
+  if (merged.enableHistoryWrites === true)
     register(
       "bili_humanism_history",
       "Write actual consumption progress under a human-configured account grant. Requires a local human-confirmed consumption receipt; reading source text does not prove playback. Never retry an unknown result.",
@@ -357,7 +378,7 @@ export function apply(ctx, config = {}) {
       },
       (a, e) => service.platformWrite("history", a, e?.signal),
     );
-  if (config.enableFavoriteWrites === true)
+  if (merged.enableFavoriteWrites === true)
     register(
       "bili_humanism_favorite",
       "Add a reading to a human-approved favorites folder. Removal requires a separate folder grant. Verify account, visibility, quota and receipt; stop on unknown result.",
@@ -368,7 +389,7 @@ export function apply(ctx, config = {}) {
       },
       (a, e) => service.platformWrite("favorites", a, e?.signal),
     );
-  if (config.enableLikeWrites === true)
+  if (merged.enableLikeWrites === true)
     register(
       "bili_humanism_like",
       "Like an existing reading under a human account grant. Add-only; persistent dedupe, account and remote state checks apply. Comments remain unavailable.",
@@ -410,7 +431,7 @@ export function apply(ctx, config = {}) {
       },
       (a) => service.personality(a.action, a),
     );
-  if (config.enableCoinWrites === true)
+  if (merged.enableCoinWrites === true)
     register(
       "bili_humanism_coin",
       "Contribute coins under a human grant with cumulative coin budget and per-video cap. totalCoins is the desired cumulative total (1 or 2, default 1), not an extra amount. Never includes a like or comment request; unknown outcomes must not be retried.",
@@ -534,4 +555,35 @@ export function apply(ctx, config = {}) {
   }
   ctx.effect(() => () => service.close());
   service.dailyFetcher.start();
+  // The settings page is optional: a host without a web carrier (a headless
+  // CLI, or a plain context in tests) keeps working from file config alone.
+  // ctx.inject waits for the webServer service instead of assuming it exists
+  // when apply() runs; mounting is best-effort.
+  const mountSettings = (scope) => {
+    let webServer = null;
+    try {
+      webServer = scope?.webServer ?? scope?.get?.("webServer") ?? null;
+    } catch {
+      webServer = null;
+    }
+    if (!webServer || typeof webServer.register !== "function") return;
+    registerSettingsRoutes({
+      webServer,
+      effect: (fn) =>
+        typeof scope?.effect === "function" ? scope.effect(fn) : fn(),
+      api: createSettingsApi({
+        service,
+        config,
+        defaults: DEFAULTS,
+        tools: [...toolNames],
+      }),
+    });
+  };
+  try {
+    if (typeof ctx.inject === "function")
+      ctx.inject(["webServer"], (scope) => mountSettings(scope));
+    else mountSettings(ctx);
+  } catch {
+    // Settings-page mounting is best-effort; tools stay usable without it.
+  }
 }

@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./client": "./lib/client.js"
   },
   "bin": {
     "bili-humanism": "./bin/cli.mjs"
@@ -53,6 +54,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ],
+      "external": [
+        "react"
+      ]
     }
   },
   "scripts": {
