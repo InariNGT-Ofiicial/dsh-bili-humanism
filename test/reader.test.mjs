@@ -39,7 +39,7 @@ function fixture(t, options = {}) {
             data: {
               title: "Synthetic reader fixture",
               owner: { name: "Synthetic author", mid: 1 },
-              pages: [{ page: 1, cid: 7, duration: 60 }],
+              pages: [{ page: 1, cid: 7, duration: options.duration ?? 60 }],
             },
           });
         if (path === player)
@@ -60,15 +60,17 @@ function fixture(t, options = {}) {
           });
         if (path === subtitle)
           return response({
-            body: options.emptyTrack
-              ? []
-              : [
-                  {
-                    from: 0,
-                    to: 58,
-                    content: "Synthetic detailed subtitle with later evidence",
-                  },
-                ],
+            body:
+              options.trackBody ??
+              (options.emptyTrack
+                ? []
+                : [
+                    {
+                      from: 0,
+                      to: 58,
+                      content: "Synthetic detailed subtitle with later evidence",
+                    },
+                  ]),
           });
         if (path === "/x/web-interface/nav")
           return response({
@@ -263,4 +265,77 @@ test("old A2 cache is bypassed while stored readings and new cache remain usable
   assert.equal(second.result.id, first.result.id);
   assert.equal(second.result.cached, true);
   assert.equal(second.usage.requests, 0);
+});
+
+test("subtitle lines past the part duration are clamped instead of failing the whole track", async (t) => {
+  // The metadata duration can understate the real length and generated tracks
+  // pad their tail: here 43 of 133 synthetic lines start beyond the +5s
+  // tolerance of the 60s part. A track that is mostly placeable must keep its
+  // readable text instead of failing the whole reading.
+  const trackBody = Array.from({ length: 133 }, (_, i) =>
+    i < 90
+      ? { from: i * 0.6, to: i * 0.6 + 0.6, content: `Synthetic line ${i}` }
+      : {
+          from: 65 + (i - 90) * 0.12,
+          to: 65 + (i - 90) * 0.12 + 0.12,
+          content: `Synthetic line ${i}`,
+        },
+  );
+  const { service } = fixture(t, { trackBody });
+  const read = await service.read(bv);
+  assert.equal(read.result.route, "A1");
+  assert.equal(read.result.coverage.state, "partial");
+  assert.equal(read.result.segments.length, 133);
+  for (const s of read.result.segments) {
+    assert.ok(s.start >= 0 && s.start <= 60, `start ${s.start} escaped the part`);
+    assert.ok(s.end >= s.start && s.end <= 60, `end ${s.end} escaped the part`);
+  }
+  assert.equal(read.result.segments.filter((s) => s.start === 60).length, 43);
+  assert.ok(read.result.coverage.timed_fraction <= 1);
+});
+
+test("a track whose every line starts past the part is still rejected", async (t) => {
+  const { service } = fixture(t, {
+    trackBody: [
+      { from: 500, to: 600, content: "Synthetic wrong-file line" },
+      { from: 700, to: 800, content: "Synthetic wrong-file line" },
+    ],
+  });
+  await assert.rejects(
+    service.read(bv),
+    (error) => error.code === "INVALID_TIMESTAMP",
+  );
+});
+
+test("a track that runs past twice the part is not clamped into that part", async (t) => {
+  // Observed shapes: an 11 s part carrying a lone 27 s ad line, and the same
+  // part carrying a 1202 s track that belongs to some other video. Clamping
+  // either one would report unrelated text as this part's captions, so the
+  // mismatch stays a loud failure instead of becoming a plausible transcript.
+  for (const trackBody of [
+    [{ from: 0.397, to: 27.425, content: "Synthetic ad line" }],
+    Array.from({ length: 12 }, (_, i) => ({
+      from: i * 100,
+      to: i * 100 + 100,
+      content: `Synthetic foreign line ${i}`,
+    })),
+  ]) {
+    const { service } = fixture(t, { duration: 11, trackBody });
+    await assert.rejects(
+      service.read(bv),
+      (error) => error.code === "INVALID_TIMESTAMP",
+    );
+  }
+});
+
+test("unreadable subtitle timestamps still fail the reading", async (t) => {
+  for (const from of ["not-a-number", -1]) {
+    const { service } = fixture(t, {
+      trackBody: [{ from, to: 1, content: "Synthetic unreadable line" }],
+    });
+    await assert.rejects(
+      service.read(bv),
+      (error) => error.code === "INVALID_TIMESTAMP",
+    );
+  }
 });
