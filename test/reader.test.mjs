@@ -8,7 +8,7 @@ import { digest } from "../lib/store.mjs";
 
 const bv = "BV0000000001";
 const secret = "SYNTHETIC_READER_COOKIE";
-const player = "/x/player/v2";
+const player = "/x/player/wbi/v2";
 const conclusion = "/x/web-interface/view/conclusion/get";
 const subtitle = "/synthetic-reader.json";
 const response = (body, status = 200) =>
@@ -120,9 +120,9 @@ test("available subtitle track takes precedence over A2 fragments and avoids opt
   assert.equal(read.result.segments[0].end, 58);
   assert.deepEqual(
     calls.map((c) => c.path),
-    ["/x/web-interface/view", player, subtitle],
+    ["/x/web-interface/view", "/x/web-interface/nav", player, subtitle],
   );
-  assert.equal(read.usage.requests, 3);
+  assert.equal(read.usage.requests, 4);
   assert.ok(calls.every((c) => c.request.method === "GET"));
   assert.equal(calls.at(-1).request.headers.Cookie, undefined);
 });
@@ -207,7 +207,7 @@ test("anonymous subtitle failure is reported and does not request A2", async (t)
       (a) => a.route === "A2" && a.state === "requires_local_credential",
     ),
   );
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("risk on the subtitle request stops A2 and persists the pause", async (t) => {
@@ -217,7 +217,7 @@ test("risk on the subtitle request stops A2 and persists the pause", async (t) =
   await assert.rejects(service.read(bv), (e) => e.code === "PLATFORM_PAUSED");
   assert.deepEqual(
     calls.map((c) => c.path),
-    ["/x/web-interface/view", player],
+    ["/x/web-interface/view", "/x/web-interface/nav", player],
   );
   const restarted = new Service({ dataDir: root });
   t.after(() => restarted.close());
@@ -252,7 +252,7 @@ test("old A2 cache is bypassed while stored readings and new cache remain usable
   const first = await service.read(bv);
   assert.equal(first.result.route, "A1");
   assert.notEqual(first.result.id, oldId);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   assert.equal(service.store.reading(oldId).route, "A2");
 
   const restarted = new Service(

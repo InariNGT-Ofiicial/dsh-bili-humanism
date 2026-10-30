@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -69,7 +70,8 @@ function fixture(t, options = {}) {
               pages: [{ page: 1, cid: 7, duration: 4 }],
             },
           });
-        if (path === "/x/player/v2")
+        if (path === "/x/web-interface/nav") return json(wbiNav);
+        if (path === "/x/player/wbi/v2")
           return json({ code: 0, data: { subtitle: { subtitles: [] } } });
         if (path === "/x/player/playurl")
           return json({
@@ -469,11 +471,11 @@ test("invalid media URL and platform risk stop without bypass and clear only the
 test("auto text+visual read shares a single request budget and cached frames survive restart", async (t) => {
   const f = fixture(t);
   const combined = await f.service.readVisual("BV0000000001");
-  assert.equal(combined.usage.requests, 4);
+  assert.equal(combined.usage.requests, 5);
   assert.equal(combined.result.visual.status, "sampled_frames");
   assert.equal(f.service.store.status().tasks.length, 1);
   const cached = await f.service.readVisual("BV0000000001");
-  assert.equal(cached.usage.requests, 2); // Empty text is rechecked; saved frames are reused.
+  assert.equal(cached.usage.requests, 3); // Empty text is rechecked; saved frames are reused.
   assert.equal(cached.result.visual.frameCount, 5);
   f.service.close();
   const reopened = new Service({ dataDir: f.dataDir });
@@ -492,7 +494,7 @@ test("auto read can return text with explicit unavailable images but never swall
   const result = await f.service.readVisual("BV0000000001");
   assert.equal(result.result.visual.status, "unavailable");
   assert.equal(result.result.visual.error, "FRAME_DEPENDENCIES_UNAVAILABLE");
-  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls.length, 3);
   const paused = fixture(t);
   paused.service.fetcher = async (url) => {
     const path = new URL(url).pathname;
@@ -501,7 +503,8 @@ test("auto read can return text with explicit unavailable images but never swall
         code: 0,
         data: { owner: { mid: 1 }, pages: [{ page: 1, cid: 7, duration: 4 }] },
       });
-    if (path === "/x/player/v2") return json({ code: 0, data: {} });
+    if (path === "/x/web-interface/nav") return json(wbiNav);
+    if (path === "/x/player/wbi/v2") return json({ code: 0, data: {} });
     return new Response("", { status: 412 });
   };
   await assert.rejects(

@@ -2,7 +2,7 @@
 
 [v1.11.3](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.3) · 修复空字幕缓存、音频备用地址与长来源图片交付。
 
-保留 v1.11.2 对反馈 #13 的修复，字幕信息读取使用固定 `/x/player/v2` 并补齐精确白名单，避免向 WBI 变体发送未签名请求；风险暂停仍立即停止并持久保存。验证范围与升级/回滚边界见[字幕入口修复说明](docs/PLAYER_ENDPOINT.md)。
+**未发布候选：** 针对 #19/#16 字幕串台，A1 改用带 WBI 签名的 `/x/player/wbi/v2`，并隔离旧版全部读取缓存。已用原身份和请求头小预算对照两条反馈来源，定位到未签名接口返回的字幕轨与目标内容不符；服务端内部成因与普遍稳定性尚未确认。签名成功也不代表语义归属已经核实。验证范围与升级/回滚边界见[字幕入口修复说明](docs/PLAYER_ENDPOINT.md)。已发布 v1.11.3 仍使用 `/x/player/v2`。
 
 兼容维护：修复卸载后未关闭账本与调度器的问题，同时支持 **DSH 0.2.1-rc.2 / rc.3**，保留旧版用法与设置。验证范围与复现见 [DSH 兼容说明](docs/DSH_COMPATIBILITY.md)。
 
@@ -226,7 +226,7 @@ bili-humanism resume --acknowledge-account-risk
 
 ## 读取失败的排查
 
-成功请求或 `coverage.state: partial` 不代表字幕已确认属于当前视频。反馈 #16/#19 报告字幕可能串台，目前尚未独立定位，不能宣称改用某个端点就已修复。若已取得的字幕与标题、分 P 或画面存在明显冲突，暂停使用该稿生成信笺、记忆和人格摘句，保留来源待核对；不要裁改时间戳来掩盖冲突，也不要靠频繁读取排查。无字幕或覆盖率低本身不能证明串台。详见 [维护记录](docs/MAINTENANCE.md)。
+成功请求或 `coverage.state: partial` 不代表字幕已确认属于当前视频。未发布候选对 A1 加签，检查返回的 BV/CID/aid（如有）与元信息是否一致，明确冲突报 `SUBTITLE_SOURCE_MISMATCH` 并停止，不下载字幕、不回退 A2、不缓存该结果。两条实测错轨也返回了正确身份字段，因此这道检查不能发现所有语义误配；合法的字幕 URL 可以是无视频标识的哈希路径。结果中的 `subtitleSource` 标记签名入口、缓存协议和已比对字段，`semanticVerification` 始终为 `unverified`。若正文与标题、分 P 或画面明显冲突，暂停据此生成信笺、记忆和人格摘句，保留来源待核对；不裁改时间戳或频繁读取。无字幕或覆盖率低本身不能证明串台。详见 [维护记录](docs/MAINTENANCE.md)。
 
 独立 CLI 不会自动读取 DSH profile 的 `cordis.patch.yml`。需要使用自己已有的读取凭据时，在 CLI 设置 `BILI_HUMANISM_CREDENTIAL_FILE` 为本地凭据 JSON 的路径，或用 `BILI_HUMANISM_CONFIG_FILE` 指向包含 `credentialPath` 的私有 JSON 配置；同时沿用宿主的 `dataDir`（`BILI_HUMANISM_HOME` 或该 JSON 中的 `dataDir`）。JSON 配置中的同名字段优先于环境变量。只填写路径，不把 Cookie 放进命令参数、聊天或 issue。
 

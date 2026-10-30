@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
@@ -37,7 +38,8 @@ function fixture(t, options = {}) {
               pages: [{ page: 1, cid: 7, duration: 60 }],
             },
           });
-        if (path === "/x/player/v2")
+        if (path === "/x/web-interface/nav") return json(wbiNav);
+        if (path === "/x/player/wbi/v2")
           return json({
             code: 0,
             data: {
@@ -351,8 +353,8 @@ test("an unconfirmed empty read reuses imported ASR across restart without losin
   assert.equal(read.result.reusedLocalSource, true);
   assert.equal(read.result.networkSource.route, "none");
   assert.equal(read.result.networkSource.cached, false);
-  assert.equal(read.usage.requests, 2);
-  assert.equal(calls.length, 2);
+  assert.equal(read.usage.requests, 3);
+  assert.equal(calls.length, 3);
   assert.equal(service.store.reading(empty.id).segments.length, 0);
   assert.equal(
     service.store.db.prepare("SELECT COUNT(*) AS count FROM readings").get()
@@ -397,7 +399,7 @@ test("freshly fetched empty results can reuse local ASR while current subtitles 
   const freshEmpty = await service.read(bv);
   assert.equal(freshEmpty.result.id, imported.id);
   assert.equal(freshEmpty.result.networkSource.cached, false);
-  assert.equal(freshEmpty.usage.requests, 2);
+  assert.equal(freshEmpty.usage.requests, 3);
   state.subtitles = true;
   expire();
   const freshSubtitle = await service.read(bv);
@@ -428,7 +430,8 @@ test("registered DSH read, import and source tools preserve the reused ASR ID an
         code: 0,
         data: { pages: [{ page: 1, cid: 7, duration: 60 }] },
       });
-    if (path === "/x/player/v2")
+    if (path === "/x/web-interface/nav") return json(wbiNav);
+    if (path === "/x/player/wbi/v2")
       return json({ code: 0, data: { subtitle: { subtitles: [] } } });
     assert.fail("Unexpected synthetic tool endpoint");
   };
@@ -469,8 +472,8 @@ test("registered DSH read, import and source tools preserve the reused ASR ID an
   assert.equal(reused.result.segments.length, 1);
   assert.equal(reused.result.next_offset, 1);
   assert.equal(reused.result.reusedLocalSource, true);
-  assert.equal(reused.usage.requests, 2);
-  assert.equal(requests, 4);
+  assert.equal(reused.usage.requests, 3);
+  assert.equal(requests, 6);
   const source = await call("source", {
     readingId: reused.result.id,
     offset: reused.result.next_offset,

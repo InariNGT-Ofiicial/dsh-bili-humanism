@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -74,7 +75,8 @@ function fixture(t, config = {}, options = {}) {
               ],
             },
           });
-        if (parsed.pathname === "/x/player/v2")
+        if (parsed.pathname === "/x/web-interface/nav") return json(wbiNav);
+        if (parsed.pathname === "/x/player/wbi/v2")
           return json({
             code: 0,
             data: {
@@ -130,7 +132,10 @@ test("daily defaults are disabled, retaining the opt-in Shanghai window and two-
       Config({ enableDailyFetching: enabled }).enableDailyFetching,
       enabled,
     );
-    assert.equal(dailyConfig({ enableDailyFetching: enabled }).enabled, enabled);
+    assert.equal(
+      dailyConfig({ enableDailyFetching: enabled }).enabled,
+      enabled,
+    );
   }
   for (const bad of [
     { enableDailyFetching: "true" },
@@ -198,7 +203,7 @@ test("one daily task saves two real text sources under shared budgets without wr
   const result = await f.worker.runDue();
   assert.equal(result.status, "completed");
   assert.equal(result.entries.length, 2);
-  assert.equal(result.requests, 7);
+  assert.equal(result.requests, 9);
   assert.equal(f.service.store.status().tasks.length, 1);
   assert.deepEqual(
     result.entries.map((item) => item.bvid),
@@ -301,12 +306,12 @@ test("cutoff is enforced before every request, even if timer delivery is delayed
 });
 
 test("request exhaustion retains an honest partial result and cannot create a third source", async (t) => {
-  const f = fixture(t, { limits: { requests: 4 } });
+  const f = fixture(t, { limits: { requests: 5 } });
   const result = await f.worker.runDue();
   assert.equal(result.status, "partial");
   assert.equal(result.error, "REQUESTS_BUDGET");
   assert.equal(result.entries.length, 1);
-  assert.equal(f.calls.length, 4);
+  assert.equal(f.calls.length, 5);
 });
 
 test("platform risk persists across the next day and no automatic fetch clears pause", async (t) => {

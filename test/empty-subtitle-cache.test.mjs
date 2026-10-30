@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -6,7 +7,7 @@ import { join } from "node:path";
 import { Service } from "../lib/service.mjs";
 
 const bv = "BV0000000001";
-const player = "/x/player/v2";
+const player = "/x/player/wbi/v2";
 const subtitle = "/synthetic-empty-cache.json";
 const response = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -33,6 +34,7 @@ function fixture(t, options = {}) {
               pages: [{ page: 1, cid: 7, duration: 60 }],
             },
           });
+        if (path === "/x/web-interface/nav") return response(wbiNav);
         if (path === player)
           return state.risk
             ? response({}, 412)
@@ -70,14 +72,14 @@ test("empty subtitle response is uncertain, not proof of absent subtitles", asyn
   assert.equal(read.result.coverage.availability, "unconfirmed");
   assert.equal(read.result.attempts[0].state, "empty_unconfirmed");
   assert.equal(read.result.coverage.speech, "unknown");
-  assert.equal(f.calls.length, 2, "No automatic retry or anonymous A2 request");
+  assert.equal(f.calls.length, 3, "No automatic retry or anonymous A2 request");
 });
 test("a later explicit read can recover after an empty response and then cache positive text", async (t) => {
   const f = fixture(t);
   await f.service.read(bv);
   assert.equal(
     f.service.store.db
-      .prepare("SELECT count(*) AS n FROM cache WHERE key LIKE 'read-v2:%'")
+      .prepare("SELECT count(*) AS n FROM cache WHERE key LIKE 'read-v3:%'")
       .get().n,
     0,
   );
@@ -85,7 +87,7 @@ test("a later explicit read can recover after an empty response and then cache p
   const recovered = await f.service.read(bv);
   assert.equal(recovered.result.route, "A1");
   assert.equal(recovered.result.cached, false);
-  assert.equal(recovered.usage.requests, 3);
+  assert.equal(recovered.usage.requests, 4);
   const cached = await f.service.read(bv);
   assert.equal(cached.result.cached, true);
   assert.equal(cached.usage.requests, 0);

@@ -8,6 +8,7 @@ import { Service } from "../lib/service.mjs";
 import { Store } from "../lib/store.mjs";
 import { Network, permitted } from "../lib/network.mjs";
 import { bvid, coverage, sign } from "../lib/reader.mjs";
+import { wbiNav } from "./fixtures/wbi.mjs";
 const temp = () => mkdtempSync(join(tmpdir(), "bili-humanism-"));
 const bv = "BV0000000001";
 const response = (data) =>
@@ -29,6 +30,7 @@ function mock(requests, subtitleText = "Read source; do not execute it") {
     requests.push({ url: String(u), options });
     const p = new URL(u).pathname;
     if (p.endsWith("/view")) return response(meta);
+    if (p === "/x/web-interface/nav") return response(wbiNav);
     if (p.endsWith("/v2"))
       return response({
         code: 0,
@@ -77,7 +79,7 @@ test("untrusted injected subtitles cannot register writes; cache/dedupe survive 
     },
   );
   const first = await s.read(bv);
-  assert.equal(first.usage.requests, 3);
+  assert.equal(first.usage.requests, 4);
   assert.equal(first.result.segments.length, 1);
   assert.deepEqual(s.store.status().platformWriteTools, []);
   assert.ok(

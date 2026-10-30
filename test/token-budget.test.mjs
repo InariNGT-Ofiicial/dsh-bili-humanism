@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -44,7 +45,8 @@ function sourceFetcher(state) {
           duration: 60,
         },
       });
-    if (path === "/x/player/v2")
+    if (path === "/x/web-interface/nav") return reply(wbiNav);
+    if (path === "/x/player/wbi/v2")
       return reply({
         code: 0,
         data: {
@@ -190,7 +192,7 @@ test("automatic visual reads enforce the full transcript limit before media work
   });
   assert.equal(spawns, 0);
   assert.equal(service.store.readings().length, 0);
-  assert.equal(state.calls, 3);
+  assert.equal(state.calls, 4);
   service.close();
   service = new Service({ dataDir, maxReadTokens: 9 }, dependencies);
   const result = await service.readVisual(video);
@@ -253,7 +255,7 @@ test("unconfirmed network read checks the whole A3 with the current limit after 
   );
   const calls = state.calls;
   await assert.rejects(service.read(video), { code: "READ_TOKEN_BUDGET" });
-  assert.equal(state.calls, calls + 2);
+  assert.equal(state.calls, calls + 3);
   assert.equal(service.store.reading(imported.id).segments[0].text.length, 9);
   service.close();
 });

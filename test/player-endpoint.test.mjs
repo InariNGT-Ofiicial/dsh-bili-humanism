@@ -7,7 +7,7 @@ import { Service } from "../lib/service.mjs";
 import { permitted } from "../lib/network.mjs";
 
 const video = "BV0000000001";
-const player = "/x/player/v2";
+const player = "/x/player/wbi/v2";
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status });
 
@@ -40,8 +40,6 @@ function fixture(t, options = {}) {
             pages: [{ page: 1, cid: 7, duration: 60 }],
           },
         });
-      // Reproduce the report's endpoint distinction without contacting Bilibili.
-      if (u.pathname === "/x/player/wbi/v2") return json({}, 412);
       if (u.pathname === player)
         return (
           options.playerResponse?.() ||
@@ -106,47 +104,53 @@ function fixture(t, options = {}) {
 }
 
 for (const anonymous of [false, true])
-  test(`A1 uses the fixed non-WBI player endpoint (${anonymous ? "guest" : "credential"})`, async (t) => {
+  test(`A1 uses the signed WBI player endpoint (${anonymous ? "guest" : "credential"})`, async (t) => {
     const { service, calls } = fixture(t, { anonymous });
     const reading = await service.read(video);
     assert.equal(reading.result.route, "A1");
     assert.equal(reading.result.segments.length, 7);
     assert.equal(reading.result.segments[0].start, 0.25);
     assert.equal(reading.result.segments[6].end, 55.5);
-    assert.equal(reading.usage.requests, 3);
+    assert.equal(reading.usage.requests, 4);
     assert.deepEqual(
       calls.map((c) => c.url.pathname),
-      ["/x/web-interface/view", player, "/synthetic-player.json"],
+      [
+        "/x/web-interface/view",
+        "/x/web-interface/nav",
+        player,
+        "/synthetic-player.json",
+      ],
     );
-    assert.equal(calls[1].url.searchParams.get("bvid"), video);
-    assert.equal(calls[1].url.searchParams.get("cid"), "7");
+    assert.equal(calls[2].url.searchParams.get("bvid"), video);
+    assert.equal(calls[2].url.searchParams.get("cid"), "7");
     assert.ok(
       calls.every(
         (c) => c.request.method === "GET" && c.request.redirect === "manual",
       ),
     );
     assert.equal(
-      calls[1].request.headers.Cookie,
+      calls[2].request.headers.Cookie,
       anonymous
         ? undefined
         : "SESSDATA=SYNTHETIC_PLAYER_COOKIE; buvid3=synthetic-existing-device",
     );
-    assert.equal(calls[2].request.headers.Cookie, undefined);
+    assert.equal(calls[3].request.headers.Cookie, undefined);
     assert.equal(service.status().pause, null);
     assert.equal((await service.read(video)).usage.requests, 0);
   });
 
 test("the added player capability is an exact read-only HTTPS path", () => {
   assert.equal(
-    permitted("https://api.bilibili.com/x/player/v2?bvid=" + video).pathname,
+    permitted("https://api.bilibili.com/x/player/wbi/v2?bvid=" + video)
+      .pathname,
     player,
   );
   for (const url of [
-    "http://api.bilibili.com/x/player/v2",
-    "https://api.bilibili.com:8082/x/player/v2",
-    "https://api.bilibili.com.evil.test/x/player/v2",
-    "https://user@api.bilibili.com/x/player/v2",
-    "https://api.bilibili.com/x/player/v2/extra",
+    "http://api.bilibili.com/x/player/wbi/v2",
+    "https://api.bilibili.com:8082/x/player/wbi/v2",
+    "https://api.bilibili.com.evil.test/x/player/wbi/v2",
+    "https://user@api.bilibili.com/x/player/wbi/v2",
+    "https://api.bilibili.com/x/player/wbi/v2/extra",
     "https://api.bilibili.com/x/v2/reply/add",
   ])
     assert.throws(
@@ -165,7 +169,7 @@ test("412 at the corrected endpoint stops immediately and survives restart witho
   );
   assert.deepEqual(
     calls.map((c) => c.url.pathname),
-    ["/x/web-interface/view", player],
+    ["/x/web-interface/view", "/x/web-interface/nav", player],
   );
   assert.equal(service.status().pause.reason, "HTTP_412");
   const restarted = new Service(
@@ -190,8 +194,8 @@ test("ordinary A1 unavailability keeps the signed A2 fallback", async (t) => {
     calls.map((c) => c.url.pathname),
     [
       "/x/web-interface/view",
-      player,
       "/x/web-interface/nav",
+      player,
       "/x/web-interface/view/conclusion/get",
     ],
   );

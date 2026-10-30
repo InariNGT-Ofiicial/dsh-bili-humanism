@@ -1,3 +1,4 @@
+import { wbiNav } from "./fixtures/wbi.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -44,7 +45,8 @@ function fixture(t, duration = 927, config = {}) {
               pages: [{ page: 1, cid: 7, duration }],
             },
           });
-        if (path === "/x/player/v2")
+        if (path === "/x/web-interface/nav") return json(wbiNav);
+        if (path === "/x/player/wbi/v2")
           return json({
             code: 0,
             data: {
@@ -127,7 +129,7 @@ test("media has no fixed default duration gate, including sources beyond six hou
         [],
       );
       assert.equal(existsSync(argv[2]), false);
-      assert.equal(read.usage.requests, 5);
+      assert.equal(read.usage.requests, 6);
       assert.equal(f.service.limits.wallMs, 90000);
       assert.equal(f.service.limits.requests, 12);
     });
