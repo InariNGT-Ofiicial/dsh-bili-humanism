@@ -46,7 +46,7 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
     "@deepseek-ai/schemastery": "3.18.5",
     "prettier": "3.6.2"
   },
