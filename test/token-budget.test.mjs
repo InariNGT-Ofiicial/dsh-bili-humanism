@@ -230,7 +230,7 @@ test("A3 and frame imports share the per-transcript boundary and preserve existi
   service.close();
 });
 
-test("empty cache reuse checks the whole A3 with the current limit after restart", async () => {
+test("unconfirmed network read checks the whole A3 with the current limit after restart", async () => {
   const dataDir = temp(),
     state = { calls: 0, segments: [] };
   let service = new Service(
@@ -253,7 +253,7 @@ test("empty cache reuse checks the whole A3 with the current limit after restart
   );
   const calls = state.calls;
   await assert.rejects(service.read(video), { code: "READ_TOKEN_BUDGET" });
-  assert.equal(state.calls, calls);
+  assert.equal(state.calls, calls + 2);
   assert.equal(service.store.reading(imported.id).segments[0].text.length, 9);
   service.close();
 });

@@ -127,9 +127,9 @@ test("available subtitle track takes precedence over A2 fragments and avoids opt
   assert.equal(calls.at(-1).request.headers.Cookie, undefined);
 });
 
-test("adding a provided device cookie invalidates the session-only empty cache without bypassing a pause", async (t) => {
-  const f = fixture(t, { noTracks: true, summaryOnly: true });
-  assert.equal((await f.service.read(bv)).result.route, "none");
+test("adding a provided device cookie invalidates the session-only positive cache without bypassing a pause", async (t) => {
+  const f = fixture(t);
+  assert.equal((await f.service.read(bv)).result.route, "A1");
   assert.equal((await f.service.read(bv)).usage.requests, 0);
   writeFileSync(
     f.credentialPath,
@@ -139,7 +139,7 @@ test("adding a provided device cookie invalidates the session-only empty cache w
   assert.ok(refreshed.usage.requests > 0);
   assert.equal(refreshed.result.cached, false);
   assert.equal(
-    f.calls.at(-1).request.headers.Cookie,
+    f.calls.filter((c) => c.path === player).at(-1).request.headers.Cookie,
     `SESSDATA=${secret}; buvid3=synthetic-existing-device`,
   );
   assert.equal((await f.service.read(bv)).usage.requests, 0);
@@ -174,7 +174,7 @@ for (const mode of ["noTracks", "emptyTrack", "unavailableTrack"]) {
     assert.equal(read.result.attempts[0].route, "A1");
     assert.equal(
       read.result.attempts[0].state,
-      mode === "unavailableTrack" ? "read_failed" : "no_subtitles",
+      mode === "unavailableTrack" ? "read_failed" : "empty_unconfirmed",
     );
     assert.ok(
       calls.findIndex((c) => c.path === player) <
@@ -189,7 +189,8 @@ test("summary and outline alone never become subtitle segments", async (t) => {
   const read = await service.read(bv);
   assert.equal(read.result.route, "none");
   assert.deepEqual(read.result.segments, []);
-  assert.equal(read.result.coverage.state, "no_subtitles");
+  assert.equal(read.result.coverage.state, "read_failed");
+  assert.equal(read.result.coverage.availability, "unconfirmed");
   assert.equal(read.result.coverage.speech, "unknown");
   assert.equal(calls.at(-1).path, conclusion);
 });

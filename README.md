@@ -1,8 +1,8 @@
 # DSH B站内容学习插件
 
-[v1.11.2](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.2) · 修复字幕读取入口与对应白名单，保留原有预算和风险暂停。
+[v1.11.3](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.3) · 修复空字幕缓存、音频备用地址与长来源图片交付。
 
-针对反馈 #13，字幕信息读取改用固定 `/x/player/v2` 并补齐精确白名单，避免向 WBI 变体发送未签名请求；风险暂停仍立即停止并持久保存。验证范围与升级/回滚边界见[字幕入口修复说明](docs/PLAYER_ENDPOINT.md)。
+保留 v1.11.2 对反馈 #13 的修复，字幕信息读取使用固定 `/x/player/v2` 并补齐精确白名单，避免向 WBI 变体发送未签名请求；风险暂停仍立即停止并持久保存。验证范围与升级/回滚边界见[字幕入口修复说明](docs/PLAYER_ENDPOINT.md)。
 
 兼容维护：修复卸载后未关闭账本与调度器的问题，同时支持 **DSH 0.2.1-rc.2 / rc.3**，保留旧版用法与设置。验证范围与复现见 [DSH 兼容说明](docs/DSH_COMPATIBILITY.md)。
 
@@ -179,11 +179,11 @@ dsh plugin --profile web add github:InariNGT-Ofiicial/dsh-bili-humanism#v1.8.0
 | 评论 / 其他表达     | 评论、私信、动态、关注、投稿未实现，不由四项写入权限放行                                                      |
 | 定时 / 私人通知     | 默认关闭每日取稿；显式开启后，宿主运行时每天 21:30–22:00 取最多 2 份新文字稿；无外部私人通知适配器 |
 
-`no_subtitles`、`read_failed`、`asr_partial`、`visual_text_partial` 分开记录。空稿的语音状态保持 `unknown`；不根据空文本推断“无语音”。字幕时间跨度只衡量文字片段，不代表完整观影或正确率。缓存有效期 6 小时，以视频、分 P、读取版本与本地登录态摘要分隔；内容去重保留 CID 和文字版本。手动导入的来源保留未独立核实标记。
+网络没有返回可用文字时，记为 `read_failed`，同时设置 `coverage.availability: "unconfirmed"`；A1 成功但为空时另记 `empty_unconfirmed`，不据此认定没有字幕。空稿的语音状态保持 `unknown`，不推断“无语音”。仅非空稿件缓存 6 小时，按视频、分 P、读取版本与本地登录态摘要分隔；旧版六小时空缓存也会被忽略。没有增加自动重试；用户之后明确发起的读取仍受额度和持久暂停限制。字幕时间跨度不代表完整观影或正确率，内容去重保留 CID 和文字版本，手动导入仍标为未独立核实。
 
 网络取稿为空时，`read` 会查找同一视频、分 P、CID 和时长下最近保存的非空 A3 记录，返回其已有 ID、ASR 覆盖和未独立核实标记；`reusedLocalSource` 与 `networkSource` 说明本地复用和本次网络/缓存状态。不会用画面文字替代语音文字，也不覆盖当前可用的 A1/A2。旧版可先使用 `import` 返回的来源 ID 调用 `bili_humanism_source`，直接读取已经导入的正文。
 
-音频下载允许 `playurl` 返回的 HTTPS `*.mcdn.bilivideo.cn` 默认端口或 8082，以及原有 `*.bilivideo.com` 默认端口。仅下载已选音轨，不向媒体域名发送 Cookie，不跟随重定向；其他域名、端口、字节与请求额度限制继续生效。本次只做合成接口回归，未实测这些 CDN 的现场可用性。
+音频下载允许 `playurl` 返回的 HTTPS `*.mcdn.bilivideo.cn` 默认端口或 8082，以及原有 `*.bilivideo.com` 默认端口。最低码率音轨的主地址被拒或普通传输失败时，可尝试该接口返回的同码率备用地址，仍逐一检查原白名单。不会猜测新域名、提升码率、向 CDN 发送 Cookie 或跟随重定向。风控、持久暂停、字节或请求额度错误立即停止，不通过备用地址继续。本次只做合成接口回归，未实测 CDN 的现场可用性。
 
 ## 凭据与边界
 
@@ -225,6 +225,8 @@ bili-humanism resume --acknowledge-account-risk
 模型工具不提供解除暂停。无自动重试。账本损坏或初始化后的账本丢失会拒绝启动，不悄悄重建一份空账本。
 
 ## 读取失败的排查
+
+成功请求或 `coverage.state: partial` 不代表字幕已确认属于当前视频。反馈 #16/#19 报告字幕可能串台，目前尚未独立定位，不能宣称改用某个端点就已修复。若已取得的字幕与标题、分 P 或画面存在明显冲突，暂停使用该稿生成信笺、记忆和人格摘句，保留来源待核对；不要裁改时间戳来掩盖冲突，也不要靠频繁读取排查。无字幕或覆盖率低本身不能证明串台。详见 [维护记录](docs/MAINTENANCE.md)。
 
 独立 CLI 不会自动读取 DSH profile 的 `cordis.patch.yml`。需要使用自己已有的读取凭据时，在 CLI 设置 `BILI_HUMANISM_CREDENTIAL_FILE` 为本地凭据 JSON 的路径，或用 `BILI_HUMANISM_CONFIG_FILE` 指向包含 `credentialPath` 的私有 JSON 配置；同时沿用宿主的 `dataDir`（`BILI_HUMANISM_HOME` 或该 JSON 中的 `dataDir`）。JSON 配置中的同名字段优先于环境变量。只填写路径，不把 Cookie 放进命令参数、聊天或 issue。
 

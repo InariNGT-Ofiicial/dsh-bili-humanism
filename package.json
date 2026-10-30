@@ -1,6 +1,6 @@
 {
   "name": "dsh-bili-humanism",
-  "version": "1.11.2",
+  "version": "1.11.3",
   "description": "用多彩的人类世界训练 DSH 人格：证据信笺、专用人格札记与人类授权的账号写入",
   "type": "module",
   "main": "index.js",

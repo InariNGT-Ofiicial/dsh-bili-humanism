@@ -473,7 +473,7 @@ test("auto text+visual read shares a single request budget and cached frames sur
   assert.equal(combined.result.visual.status, "sampled_frames");
   assert.equal(f.service.store.status().tasks.length, 1);
   const cached = await f.service.readVisual("BV0000000001");
-  assert.equal(cached.usage.requests, 0);
+  assert.equal(cached.usage.requests, 2); // Empty text is rechecked; saved frames are reused.
   assert.equal(cached.result.visual.frameCount, 5);
   f.service.close();
   const reopened = new Service({ dataDir: f.dataDir });

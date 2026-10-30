@@ -12,7 +12,8 @@ const cdn = "https://synthetic.mcdn.bilivideo.cn:8082/synthetic.m4s";
 const json = (body) => new Response(JSON.stringify(body), { status: 200 });
 
 function fixture(t, options = {}) {
-  const root = mkdtempSync(join(tmpdir(), "humanism-media-cache-"));
+  const root =
+    options.root || mkdtempSync(join(tmpdir(), "humanism-media-cache-"));
   const calls = [];
   const credentialPath = join(root, "synthetic-credential.json");
   writeFileSync(credentialPath, '{"sessdata":"SYNTHETIC_MEDIA_COOKIE"}');
@@ -62,13 +63,19 @@ function fixture(t, options = {}) {
             code: 0,
             data: {
               dash: {
-                audio: [{ bandwidth: 100, baseUrl: options.mediaURL || cdn }],
+                audio: options.audioTracks || [
+                  { bandwidth: 100, baseUrl: options.mediaURL || cdn },
+                ],
               },
             },
           });
         if (path === "/synthetic.m4s")
           return (
             options.mediaResponse?.() || new Response("SYNTHETIC_AUDIO_BYTES")
+          );
+        if (path === "/synthetic-backup.m4s")
+          return (
+            options.backupResponse?.() || new Response("SYNTHETIC_BACKUP_BYTES")
           );
         assert.fail("Unexpected synthetic endpoint");
       },
@@ -151,6 +158,83 @@ test("audio downloads a playurl-provided MCDN resource without forwarding creden
   assert.ok(!JSON.stringify(result).includes(cdn));
 });
 
+test("audio falls back to an allowlisted backup CDN when the primary is off-list", async (t) => {
+  // 实测 B 站把最低码率音频的 baseUrl 换到 PCDN 域名（不在允许清单内），
+  // 而同一 track 的 backupUrl 仍指向 bilivideo.com。抽帧早已沿同清晰度备选回退
+  // （#7），音频路径此前没有。这里锁定：主地址被拒后继续尝试允许清单内的备选，
+  // 且凭据仍只发给 API、不发往 CDN。
+  const { service, calls } = fixture(t, {
+    credential: true,
+    audioTracks: [
+      {
+        bandwidth: 100,
+        baseUrl: "https://synthetic.pcdn.invalid/synthetic.m4s",
+        backupUrl: [
+          "https://synthetic-backup.bilivideo.com/synthetic-backup.m4s",
+        ],
+      },
+    ],
+  });
+  const result = await service.audio(seed(service).id);
+  assert.equal(
+    readFileSync(result.result.path, "utf8"),
+    "SYNTHETIC_BACKUP_BYTES",
+  );
+  // 被拒的主地址在 permitted() 阶段返回，不消耗请求额度；只计 playurl 与备选。
+  assert.equal(result.usage.requests, 2);
+  assert.equal(
+    calls[0].request.headers.Cookie,
+    "SESSDATA=SYNTHETIC_MEDIA_COOKIE",
+  );
+  assert.equal(calls[1].request.headers.Cookie, undefined);
+  assert.ok(
+    calls.every(
+      (c) => c.request.method === "GET" && c.request.redirect === "manual",
+    ),
+  );
+  assert.ok(!JSON.stringify(result).includes("pcdn.invalid"));
+  assert.ok(!JSON.stringify(result).includes("SYNTHETIC_BACKUP_BYTES"));
+});
+
+test("audio keeps the off-list rejection when no allowlisted alternative exists", async (t) => {
+  const { service, calls } = fixture(t, {
+    audioTracks: [
+      {
+        bandwidth: 100,
+        baseUrl: "https://synthetic.pcdn.invalid/synthetic.m4s",
+        backupUrl: ["https://synthetic.pcdn2.invalid/synthetic.m4s"],
+      },
+    ],
+  });
+  await assert.rejects(
+    service.audio(seed(service).id),
+    (e) => e.code === "URL_DENIED",
+  );
+  // 两个地址都在 permitted() 阶段被拒，未到达传输层；失败不猜测其他目标。
+  assert.equal(calls.length, 1);
+});
+
+test("audio alternative retry stays inside the shared request budget", async (t) => {
+  const { service, calls } = fixture(t, {
+    limits: { requests: 1 },
+    audioTracks: [
+      {
+        bandwidth: 100,
+        baseUrl: "https://synthetic.pcdn.invalid/synthetic.m4s",
+        backupUrl: [
+          "https://synthetic-backup.bilivideo.com/synthetic-backup.m4s",
+        ],
+      },
+    ],
+  });
+  await assert.rejects(
+    service.audio(seed(service).id),
+    (e) => e.code === "REQUESTS_BUDGET",
+  );
+  // playurl 用尽唯一额度；备选尝试在传输层前被预算拦下。
+  assert.equal(calls.length, 1);
+});
+
 test("audio still rejects an off-list playurl resource before CDN dispatch", async (t) => {
   const { service, calls } = fixture(t, {
     mediaURL: "https://127.0.0.1:8082/synthetic.m4s",
@@ -160,6 +244,58 @@ test("audio still rejects an off-list playurl resource before CDN dispatch", asy
     (e) => e.code === "URL_DENIED",
   );
   assert.equal(calls.length, 1);
+});
+
+for (const status of [403, 412, 429]) {
+  test(`audio backup never continues after HTTP ${status} risk pause`, async (t) => {
+    const { service, calls } = fixture(t, {
+      audioTracks: [
+        {
+          bandwidth: 100,
+          baseUrl: cdn,
+          backupUrl: [
+            "https://synthetic-backup.bilivideo.com/synthetic-backup.m4s",
+          ],
+        },
+      ],
+      mediaResponse: () => new Response(null, { status }),
+    });
+    await assert.rejects(
+      service.audio(seed(service).id),
+      (e) => e.code === "PLATFORM_PAUSED",
+    );
+    assert.equal(calls.length, 2);
+    assert.ok(!calls.some((c) => c.path === "/synthetic-backup.m4s"));
+    const before = calls.length;
+    await assert.rejects(
+      service.audio(seed(service).id),
+      (e) => e.code === "PERSISTENT_PAUSE",
+    );
+    assert.equal(calls.length, before);
+  });
+}
+test("audio backup does not bypass the media byte cap", async (t) => {
+  const { service, calls } = fixture(t, {
+    audioTracks: [
+      {
+        bandwidth: 100,
+        baseUrl: cdn,
+        backupUrl: [
+          "https://synthetic-backup.bilivideo.com/synthetic-backup.m4s",
+        ],
+      },
+    ],
+    mediaResponse: () =>
+      new Response("synthetic", {
+        headers: { "content-length": String(32 * 1024 * 1024 + 1) },
+      }),
+  });
+  await assert.rejects(
+    service.audio(seed(service).id),
+    (e) => e.code === "RESPONSE_TOO_LARGE",
+  );
+  assert.equal(calls.length, 2);
+  assert.ok(!calls.some((c) => c.path === "/synthetic-backup.m4s"));
 });
 
 test("MCDN media keeps redirect, byte and request-budget limits", async (t) => {
@@ -196,7 +332,7 @@ test("MCDN media keeps redirect, byte and request-budget limits", async (t) => {
   }
 });
 
-test("an empty cached read reuses imported ASR across restart without losing provenance or old IDs", async (t) => {
+test("an unconfirmed empty read reuses imported ASR across restart without losing provenance or old IDs", async (t) => {
   const { root, service, calls } = fixture(t);
   const empty = (await service.read(bv)).result;
   assert.equal(empty.route, "none");
@@ -214,20 +350,16 @@ test("an empty cached read reuses imported ASR across restart without losing pro
   assert.match(read.result.localEvidence, /not independently verified/);
   assert.equal(read.result.reusedLocalSource, true);
   assert.equal(read.result.networkSource.route, "none");
-  assert.equal(read.result.networkSource.cached, true);
-  assert.equal(read.usage.requests, 0);
-  assert.equal(calls.length, 0);
+  assert.equal(read.result.networkSource.cached, false);
+  assert.equal(read.usage.requests, 2);
+  assert.equal(calls.length, 2);
   assert.equal(service.store.reading(empty.id).segments.length, 0);
   assert.equal(
     service.store.db.prepare("SELECT COUNT(*) AS count FROM readings").get()
       .count,
     rows,
   );
-  const restarted = new Service(
-    { dataDir: root, enableDailyFetching: false },
-    { fetcher: () => assert.fail("Cached read must not request network") },
-  );
-  t.after(() => restarted.close());
+  const { service: restarted } = fixture(t, { root });
   assert.equal((await restarted.read(bv)).result.id, imported.id);
 });
 
@@ -337,8 +469,8 @@ test("registered DSH read, import and source tools preserve the reused ASR ID an
   assert.equal(reused.result.segments.length, 1);
   assert.equal(reused.result.next_offset, 1);
   assert.equal(reused.result.reusedLocalSource, true);
-  assert.equal(reused.usage.requests, 0);
-  assert.equal(requests, 2);
+  assert.equal(reused.usage.requests, 2);
+  assert.equal(requests, 4);
   const source = await call("source", {
     readingId: reused.result.id,
     offset: reused.result.next_offset,

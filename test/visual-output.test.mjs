@@ -25,7 +25,9 @@ import {
 import jpeg, { portrait } from "./visual-fixture.mjs";
 
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "humanism-visual-output-")));
+  const root = realpathSync(
+    mkdtempSync(join(tmpdir(), "humanism-visual-output-")),
+  );
   const path = join(root, "assets", "synthetic-frames");
   mkdirSync(path, { recursive: true });
   const file = "frame-000-0.00.jpg";
@@ -98,6 +100,119 @@ function fixture() {
   };
   return { root, path, visual, saved, attachments, ctx, exec };
 }
+
+for (const duration of [600, 601, 915, 2297]) {
+  test(`visual attachment accepts a bounded page from a ${duration}-second source`, async () => {
+    const f = fixture();
+    f.visual.source.duration = duration;
+    const result = await attachVisualPage(f.attachments, f.root, f.visual);
+    assert.equal(result.status, "frames_ready");
+    assert.equal(result.images.length, 1);
+    assert.equal(f.saved.length, 1);
+    assert.ok(!JSON.stringify(result).includes(f.root));
+  });
+}
+
+test("visual source duration remains finite, positive and safely representable", async () => {
+  for (const duration of [0, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const f = fixture();
+    f.visual.source.duration = duration;
+    await assert.rejects(attachVisualPage(f.attachments, f.root, f.visual), {
+      code: "VISUAL_PAGE_INVALID",
+    });
+    assert.equal(f.saved.length, 0);
+  }
+});
+
+test("long visual sources retain total-frame and offset invariants", async () => {
+  for (const change of [
+    { frameCount: 41 },
+    { frameOffset: 1 },
+    { nextOffset: 1 },
+  ]) {
+    const f = fixture();
+    f.visual.source.duration = 915;
+    Object.assign(f.visual, change);
+    await assert.rejects(attachVisualPage(f.attachments, f.root, f.visual), {
+      code: "VISUAL_PAGE_INVALID",
+    });
+    assert.equal(f.saved.length, 0);
+  }
+});
+
+test("read, visual and frames tools deliver a long source without dropping its text", async () => {
+  const f = fixture();
+  f.visual.source.duration = 915;
+  const tools = new Map();
+  let dispose;
+  const previous = Object.fromEntries(
+    ["readVisual", "visual", "visualFrames"].map((name) => [
+      name,
+      Service.prototype[name],
+    ]),
+  );
+  const page = (offset) => ({
+    ...f.visual,
+    frameOffset: offset,
+    frameCount: 2,
+    nextOffset: offset === 0 ? 1 : null,
+  });
+  Service.prototype.readVisual = async () => ({
+    taskId: "synthetic-long-source",
+    usage: { requests: 4 },
+    result: {
+      id: "synthetic-reading",
+      bvid: "BV0000000001",
+      page: 1,
+      cid: 7,
+      duration: 915,
+      route: "A1",
+      segments: [{ start: 0, end: 10, text: "Synthetic long-source text" }],
+      coverage: { state: "partial" },
+      visual: page(0),
+    },
+  });
+  Service.prototype.visual = async () => ({ result: page(0) });
+  Service.prototype.visualFrames = (_id, offset) => page(offset);
+  try {
+    plugin.apply(
+      {
+        ...f.ctx,
+        tools: { register: (tool) => tools.set(tool.name, tool) },
+        effect: (setup) => {
+          dispose = setup();
+        },
+      },
+      { dataDir: f.root, enableDailyFetching: false },
+    );
+    for (const [name, args] of [
+      ["read", { video: "BV0000000001" }],
+      ["visual", { readingId: "synthetic-reading" }],
+      ["frames", { readingId: "synthetic-reading", offset: 1 }],
+    ]) {
+      const tool = tools.get("bili_humanism_" + name);
+      const raw = await tool.execute(args, f.exec);
+      const value = typeof raw === "string" ? JSON.parse(raw) : raw;
+      assert.equal(value.error, undefined);
+      const visual = name === "read" ? value.visual : value;
+      assert.equal(visual.status, "frames_ready");
+      assert.equal(visual.nextOffset, name === "frames" ? null : 1);
+      assert.equal(
+        tool.output.render({}, raw).filter((b) => b.type === "image").length,
+        1,
+      );
+      if (name === "read")
+        assert.equal(
+          value.result.segments[0].text,
+          "Synthetic long-source text",
+        );
+    }
+  } finally {
+    dispose?.();
+    for (const [name, fn] of Object.entries(previous))
+      Service.prototype[name] = fn;
+  }
+});
 
 test("pinned DSH output contract produces durable native image blocks instead of paths", async () => {
   const f = fixture();
