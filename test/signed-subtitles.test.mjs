@@ -200,7 +200,7 @@ for (const field of ["bvid", "cid", "aid"])
               bvid: bv,
               cid: 7,
               aid: 17,
-                [field]: field === "bvid" ? "BVxxxxxxxxxx" : 999,
+              [field]: field === "bvid" ? "BVxxxxxxxxxx" : 999,
               subtitle: {
                 subtitles: [
                   {
@@ -321,3 +321,125 @@ test("the extra nav request still obeys the configured hard request budget", asy
     0,
   );
 });
+
+// AI subtitle files named for a video start with its aid and cid digits.
+const longAid = 100000000000017;
+const longCid = 10000000007;
+const longView = () =>
+  json({
+    code: 0,
+    data: {
+      bvid: bv,
+      aid: longAid,
+      title: "Synthetic expected subject",
+      owner: { mid: 1 },
+      pages: [{ page: 1, cid: longCid, duration: 60 }],
+    },
+  });
+const longPlayer =
+  (...subtitles) =>
+  () =>
+    json({
+      code: 0,
+      data: { bvid: bv, aid: longAid, cid: longCid, subtitle: { subtitles } },
+    });
+const aiTrack = (name) => ({
+  lan: "ai-zh",
+  subtitle_url:
+    "//aisubtitle.hdslb.com/bfs/ai_subtitle/prod/" +
+    name +
+    "?auth_key=synthetic",
+});
+
+test("an AI track named for another video blocks CDN, fallback and cache", async (t) => {
+  const f = fixture(t, {
+    responses: {
+      "/x/web-interface/view": longView,
+      // The envelope echoes the target IDs; only the track name is foreign.
+      [signed]: longPlayer(
+        aiTrack("100000000000099" + "10000000009" + "c".repeat(32)),
+      ),
+    },
+  });
+  await assert.rejects(
+    f.service.read(bv),
+    (e) => e.code === "SUBTITLE_SOURCE_MISMATCH",
+  );
+  assert.equal(f.calls.length, 3);
+  assert.ok(!f.calls.some(({ u }) => u.hostname === "aisubtitle.hdslb.com"));
+  assert.equal(
+    f.service.store.db.prepare("SELECT count(*) AS n FROM cache").get().n,
+    0,
+  );
+});
+
+test("an AI track named for this video is read and its binding recorded", async (t) => {
+  const f = fixture(t, {
+    responses: {
+      "/x/web-interface/view": longView,
+      [signed]: longPlayer(aiTrack(`${longAid}${longCid}correct`)),
+    },
+  });
+  const r = await f.service.read(bv);
+  assert.equal(r.result.route, "A1");
+  assert.equal(r.result.segments[0].text, "Synthetic expected subject");
+  assert.deepEqual(r.result.subtitleSource.identityFields, [
+    "bvid",
+    "cid",
+    "aid",
+    "subtitleTrack",
+  ]);
+  assert.equal(r.result.subtitleSource.semanticVerification, "unverified");
+});
+
+test("track names with fewer than 16 leading digits stay opaque", async (t) => {
+  const f = fixture(t, {
+    responses: {
+      "/x/web-interface/view": longView,
+      [signed]: longPlayer(aiTrack("123456789012345correct")),
+    },
+  });
+  const r = await f.service.read(bv);
+  assert.equal(r.result.route, "A1");
+  assert.deepEqual(r.result.subtitleSource.identityFields, [
+    "bvid",
+    "cid",
+    "aid",
+  ]);
+});
+
+for (const [label, subtitles, route] of [
+  [
+    "is skipped for a readable track",
+    [
+      { lan: "zh-CN", subtitle_url: "" },
+      {
+        lan: "ai-zh",
+        subtitle_url: "https://aisubtitle.hdslb.com/opaque-correct.json",
+      },
+    ],
+    "A1",
+  ],
+  [
+    "leaves A1 empty and unconfirmed",
+    [{ lan: "ai-zh", subtitle_url: "" }],
+    "A2",
+  ],
+])
+  test(`a listed track without an address ${label}`, async (t) => {
+    const f = fixture(t, {
+      responses: {
+        [signed]: () =>
+          json({
+            code: 0,
+            data: { bvid: bv, aid: 17, cid: 7, subtitle: { subtitles } },
+          }),
+      },
+    });
+    const r = await f.service.read(bv);
+    assert.equal(r.result.route, route);
+    assert.equal(
+      r.result.attempts[0].state,
+      route === "A1" ? "text_available" : "empty_unconfirmed",
+    );
+  });
