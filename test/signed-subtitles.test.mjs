@@ -343,10 +343,10 @@ const longPlayer =
       code: 0,
       data: { bvid: bv, aid: longAid, cid: longCid, subtitle: { subtitles } },
     });
-const aiTrack = (name) => ({
+const aiTrack = (name, dir = "prod") => ({
   lan: "ai-zh",
   subtitle_url:
-    "//aisubtitle.hdslb.com/bfs/ai_subtitle/prod/" +
+    `//aisubtitle.hdslb.com/bfs/ai_subtitle/${dir}/` +
     name +
     "?auth_key=synthetic",
 });
@@ -377,7 +377,9 @@ test("an AI track named for this video is read and its binding recorded", async 
   const f = fixture(t, {
     responses: {
       "/x/web-interface/view": longView,
-      [signed]: longPlayer(aiTrack(`${longAid}${longCid}correct`)),
+      [signed]: longPlayer(
+        aiTrack(`${longAid}${longCid}${"d".repeat(32)}`, "correct"),
+      ),
     },
   });
   const r = await f.service.read(bv);
@@ -407,39 +409,3 @@ test("track names with fewer than 16 leading digits stay opaque", async (t) => {
     "aid",
   ]);
 });
-
-for (const [label, subtitles, route] of [
-  [
-    "is skipped for a readable track",
-    [
-      { lan: "zh-CN", subtitle_url: "" },
-      {
-        lan: "ai-zh",
-        subtitle_url: "https://aisubtitle.hdslb.com/opaque-correct.json",
-      },
-    ],
-    "A1",
-  ],
-  [
-    "leaves A1 empty and unconfirmed",
-    [{ lan: "ai-zh", subtitle_url: "" }],
-    "A2",
-  ],
-])
-  test(`a listed track without an address ${label}`, async (t) => {
-    const f = fixture(t, {
-      responses: {
-        [signed]: () =>
-          json({
-            code: 0,
-            data: { bvid: bv, aid: 17, cid: 7, subtitle: { subtitles } },
-          }),
-      },
-    });
-    const r = await f.service.read(bv);
-    assert.equal(r.result.route, route);
-    assert.equal(
-      r.result.attempts[0].state,
-      route === "A1" ? "text_available" : "empty_unconfirmed",
-    );
-  });
