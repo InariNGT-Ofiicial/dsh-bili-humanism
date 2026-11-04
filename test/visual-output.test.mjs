@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import {
+  defineTool,
+  validateJsonSchemaValue,
+  valueSchemaSpecToJsonSchema,
+} from "@deepseek-ai/dsh-tools";
 import * as plugin from "../index.js";
 import { Service } from "../lib/service.mjs";
 import {
@@ -450,4 +454,23 @@ test("one read tool call automatically chooses unified visual work and attaches 
     if (previous) Service.prototype.readVisual = previous;
     else delete Service.prototype.readVisual;
   }
+});
+
+test("a visual error reporting a failed cleanup fits the output schema", () => {
+  const schema = valueSchemaSpecToJsonSchema(VISUAL_OUTPUT_SCHEMA);
+  assert.deepEqual(
+    validateJsonSchemaValue(
+      schema,
+      { error: "E", message: "m", mediaCleanup: "refused_or_failed" },
+      "value",
+    ),
+    [],
+  );
+  assert.ok(
+    validateJsonSchemaValue(
+      schema,
+      { error: "E", message: "m", mediaCleanup: "something else" },
+      "value",
+    ).length > 0,
+  );
 });

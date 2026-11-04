@@ -5,6 +5,7 @@
 - 已知时长时，DASH 选轨优先取估算字节不超过媒体上限 90% 的最大短边，都放不下时取最低码率；备用地址不会回到已排除的大轨。时长未知时行为不变。此前总选最高 480p，较长的来源下载超过 32 MiB 后返回 `RESPONSE_TOO_LARGE`，一张画面都没有。这些来源现在会走到解码，所以解码比任务墙钟早 5 秒放弃，解不完时只丢画面，文字照常返回。
 - `media.py asr` 把尾段的起点也夹到来源时长内。音频可以比元数据长一秒以内，此前落在这一秒里的尾段起点晚于时长、终点又被夹回时长，`end < start` 让整份转写报 `INVALID_TIMESTAMP`。
 - 删除临时媒体在 EBUSY、EPERM 时重试最多 2 秒。Windows 上 venv 的 `python.exe` 是启动器，取消或超时杀掉它之后，真正的解释器还占着输入文件，此前删除当场失败，临时视频留在 `media-intermediates`，错误带上 `mediaCleanup`。其他错误和拒绝删除不重试。
+- `bili_humanism_visual`、`frames` 的错误值可以带 `mediaCleanup`。`safeError` 一直会带上这个字段，此前它不合输出 schema，工具报错时反而被宿主拒绝。
 
 ## 未发布 — 空字幕地址健壮性修复
 
