@@ -93,5 +93,32 @@ class DurationTests(unittest.TestCase):
                     self.assertEqual(caught.exception.code, 2)
 
 
+class AsrTailTests(unittest.TestCase):
+    def segments(self, duration, audio_duration, rows):
+        import json
+
+        class FakeModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def transcribe(self, path, **kwargs):
+                return iter(SimpleNamespace(start=s, end=e, text=t) for s, e, t in rows), SimpleNamespace(duration=audio_duration)
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "synthetic.m4s"
+            source.write_bytes(b"synthetic")
+            output = Path(folder) / "out.json"
+            args = [str(SCRIPT), "asr", str(source), str(output), "--duration", str(duration), "--model", folder]
+            module = SimpleNamespace(WhisperModel=FakeModel)
+            with patch.object(sys, "argv", args), patch.dict(sys.modules, {"faster_whisper": module}):
+                MEDIA.main()
+            return json.loads(output.read_text(encoding="utf8"))["segments"]
+
+    def test_a_tail_segment_past_the_metadata_stays_ordered_and_keeps_its_words(self):
+        segments = self.segments(120, 120.6, [(0, 2, " 开头 "), (119, 120.4, " 跨过 "), (120.3, 120.6, " 谢谢 ")])
+        self.assertEqual([(s["start"], s["end"], s["text"]) for s in segments],
+                         [(0, 2, "开头"), (119, 120, "跨过"), (120, 120, "谢谢")])
+
+
 if __name__ == "__main__":
     unittest.main()
