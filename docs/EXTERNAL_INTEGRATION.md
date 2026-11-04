@@ -10,7 +10,7 @@
 
 | 需要的材料 | 已有入口 | 交接时保留的含义 |
 | --- | --- | --- |
-| 指定视频的来源与覆盖说明 | `bili_humanism_read`：`video`、可选 `page` | 读取 ID 在 `result.id`；保留作者、链接、分 P、route、coverage 和未覆盖部分 |
+| 指定视频的来源与覆盖说明 | `bili_humanism_read`：`video`、可选 `page` | 读取 ID 在 `result.id`；保留作者、链接、分 P、route、coverage 和未覆盖部分。结构化值保持完整，模型看到的是压缩后的文本；弹幕在 `result.danmaku`，是观众评论，不是事实 |
 | 已取得来源的下一页 | `bili_humanism_source`：`readingId`、可选 `offset` | 根据 `next_offset` 分页，不能把一页片段说成完整观看 |
 | 可审阅的本地信笺 | `bili_humanism_inbox` | 小收件箱保留原数组；大收件箱用 action:index / volume 与同一 snapshot 逐卷交接，核对 total、count、fragments 和 nextVolume；只交接使用者选择的必要记录 |
 | 近期人格反思 | `bili_humanism_personality`：`action: read`，可选 `offset`、`limit` | 默认 7 条、最多 30 条，保留条目的手账来源、日期与修订；显式关闭人格学习时模型工具不注册 |

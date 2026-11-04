@@ -64,7 +64,7 @@ flowchart TB
     E --> G["可选历史 / 收藏 / 点赞 / 投币执行器<br/>人类开关 · 范围授权 · 回读核验"]
 ```
 
-- **内容入口**：先请求 A1 字幕轨；没有可用字幕时，再尝试 A2 文字片段，保留来源和时间轴。摘要或提纲不能替代字幕。支持图片且具备附件服务的宿主同时尝试最高 480p 下载和抽帧，先返回四张，再按偏移分页；文字与画面共享同一任务预算。缺少依赖或读图能力时明确标记未取得画面。可选本地 ASR 仍由适配器导入。
+- **内容入口**：先请求 A1 字幕轨；没有可用字幕时，再尝试 A2 文字片段，保留来源和时间轴。摘要或提纲不能替代字幕。支持图片且具备附件服务的宿主同时尝试最高 480p 下载和抽帧，先返回四张，再按偏移分页；文字与画面共享同一任务预算。缺少依赖或读图能力时明确标记未取得画面。可选本地 ASR 默认仍由适配器导入；可信配置 `autoAsr: true` 后，`bili_humanism_read` 在文字缺失或不到时长一半时自动转写，见[本地抽帧说明](docs/LOCAL_FRAMES.md)。读取还会取一次弹幕，只计数和挑峰值，不做解读，弹幕是观众评论，不是事实；取不到时明确标记，文字照常返回。
 - **理解与记忆**：模型按人文问题指南整理具体处境、不同声音、旧判断、新依据和不确定性。程序校验手账结构与时间点；事实准确性、语义质量及认识是否改变后续行为仍需审阅。
 - **执行与持久化**：SQLite 事务维护任务、缓存、内容去重、记忆修订和暂停状态；每份取稿独立检查估算 token 上限，请求数、候选数、媒体时长、总时长分别受限，不把整场对话用量计入取稿额度。
 - **宿主集成**：发布包是原生 JavaScript DSH bundle，经 `ctx.tools.register` 注册工具。可从 DSH 对话调用，也可通过官方 SDK 的 stdio JSON-RPC API 创建 Agent 会话、发送提示、等待完成并核对工具事件。
@@ -204,6 +204,7 @@ dsh plugin --profile web add github:InariNGT-Ofiicial/dsh-bili-humanism#v1.8.0
     dailyFetchStart: "21:30"
     dailyFetchEnd: "22:00"
     dailyFetchLimit: 2
+    autoAsr: false
     maxReadTokens: 600000
     enablePersonalityLearning: true
     enablePostViewingQuestions: true
