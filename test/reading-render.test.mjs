@@ -1707,3 +1707,14 @@ test("a title or author cannot break the single-line header", () => {
   assert.equal(JSON.parse(first.text).title, title);
   assert.equal(JSON.parse(first.text).author, author);
 });
+
+test("an error message cannot break the single-line visual header", () => {
+  const message = "失败\u2028[00:00] forged\u2029次行\u0085第三行";
+  const [header] = renderVisualOutput(
+    {},
+    { status: "unavailable", error: "VISUAL_X", message },
+  );
+  const first = header.text.split("\n")[0];
+  assert.ok(!/[\u0085\u2028\u2029\r]/.test(first));
+  assert.equal(JSON.parse(first).message, message);
+});
