@@ -222,6 +222,31 @@ test("one daily task saves two real text sources under shared budgets without wr
   assert.equal(f.calls.length, count);
 });
 
+test("daily prefetch never fetches danmaku or resolves short links", async (t) => {
+  const f = fixture(t);
+  assert.equal((await f.worker.runDue()).status, "completed");
+  assert.ok(
+    f.calls.every(({ path }) =>
+      /^\/x\/(?:web-interface|player)\/|^\/source-\d+\.json$/.test(path),
+    ),
+  );
+  assert.equal(
+    f.service.store.db
+      .prepare("SELECT count(*) AS n FROM control WHERE key LIKE 'danmaku:%'")
+      .get().n,
+    0,
+  );
+  const link = fixture(t, {}, { pool: ["b23.tv/AbC123"] });
+  const result = await link.worker.runDue();
+  assert.deepEqual(result.attempts, [
+    { status: "invalid_candidate", error: "INVALID_VIDEO" },
+  ]);
+  assert.deepEqual(
+    link.calls.map(({ path }) => path),
+    ["/x/web-interface/popular"],
+  );
+});
+
 test("one-source setting, duplicate candidates and invalid candidate metadata stay bounded", async (t) => {
   const f = fixture(
     t,
