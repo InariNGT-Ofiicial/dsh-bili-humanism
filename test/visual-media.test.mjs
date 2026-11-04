@@ -255,6 +255,134 @@ test("CDN candidates preserve selected quality and dimensions, include backups, 
   );
 });
 
+test("a known duration selects the largest short side expected to fit 90% of the media cap", () => {
+  const sd = {
+    ...track,
+    id: 16,
+    width: 640,
+    height: 360,
+    bandwidth: 1000,
+    baseUrl: "https://sd.bilivideo.com/video.mp4",
+  };
+  const low = {
+    ...track,
+    id: 6,
+    width: 426,
+    height: 240,
+    bandwidth: 500,
+    baseUrl: "https://low.bilivideo.com/video.mp4",
+  };
+  const pick = (duration, ...video) =>
+    videoTrack({ dash: { video } }, duration);
+  // 90% of 32 MiB is 30198988.8 bytes: 2415919 bit/s fits 100 s, 2415920 does not.
+  assert.equal(pick(100, { ...track, bandwidth: 2415919 }, sd).quality, 32);
+  assert.equal(pick(100, { ...track, bandwidth: 2415920 }, sd).quality, 16);
+  assert.equal(
+    pick(
+      100,
+      { ...track, bandwidth: 2415920 },
+      { ...sd, bandwidth: 2415920 },
+      low,
+    ).quality,
+    6,
+  );
+  assert.equal(
+    pick(
+      100,
+      { ...track, bandwidth: 900, baseUrl: "https://more.bilivideo.com/v.mp4" },
+      { ...track, bandwidth: 500, baseUrl: "https://less.bilivideo.com/v.mp4" },
+      sd,
+    ).bandwidth,
+    500,
+  );
+  // Portrait sources compare by short side too.
+  assert.equal(
+    pick(100, { ...track, width: 480, height: 852, bandwidth: 2000 }, sd).width,
+    480,
+  );
+  // Nothing fits: the lowest bitrate, whatever its size.
+  assert.equal(
+    pick(
+      1000000,
+      { ...track, bandwidth: 300 },
+      { ...sd, bandwidth: 200 },
+      { ...low, bandwidth: 400 },
+    ).quality,
+    16,
+  );
+  // Unknown duration keeps the size-first choice however large the track is.
+  for (const unknown of [undefined, null, NaN, 0, -1, Infinity])
+    assert.equal(
+      pick(unknown, { ...track, bandwidth: 20000000 }, sd).quality,
+      32,
+      String(unknown),
+    );
+  const durl = { quality: 32, durl: [{ url: cdn, size: 100, length: 4000 }] };
+  assert.equal(videoTrack(durl, 1000000).transport, "durl");
+});
+
+test("fallback addresses never reintroduce a variant ruled out as too large", () => {
+  const fit = "https://fit.bilivideo.com/video.mp4";
+  const fitBackup = "https://fit-backup.bilivideo.com/video.mp4";
+  const large = "https://large.bilivideo.com/video.mp4";
+  const video = [
+    { ...track, bandwidth: 1000, baseUrl: fit, backupUrl: [fitBackup] },
+    { ...track, bandwidth: 20000000, baseUrl: large },
+  ];
+  const chosen = videoTrack({ dash: { video } }, 3600);
+  assert.equal(chosen.url, fit);
+  assert.deepEqual(chosen.alternatives, [fitBackup]);
+  const fallback = videoTrack({ dash: { video } }, 10000000);
+  assert.equal(fallback.url, fit);
+  assert.deepEqual(fallback.alternatives, [fitBackup]);
+  assert.deepEqual(videoTrack({ dash: { video } }).alternatives, [
+    fitBackup,
+    large,
+  ]);
+});
+
+test("decoding gives up before the task wall, so a slow long source costs the images and not the text", async (t) => {
+  const f = fixture(t, { limits: { wallMs: 60000 } });
+  await visual(f);
+  const { argv } = f.children[0];
+  const wall = Number(argv[argv.indexOf("--max-wall-seconds") + 1]);
+  assert.ok(wall > 0 && wall <= 55, String(wall));
+  cleaned(f);
+});
+
+test("visual passes the reading duration, so a long source downloads the track that fits", async (t) => {
+  const f = fixture(t, {
+    duration: 3600,
+    data: {
+      quality: 32,
+      dash: {
+        video: [
+          {
+            ...track,
+            bandwidth: 300000,
+            baseUrl: "https://large.bilivideo.com/video.mp4",
+          },
+          {
+            ...track,
+            id: 16,
+            width: 640,
+            height: 360,
+            bandwidth: 60000,
+            baseUrl: "https://fit.bilivideo.com/video.mp4",
+          },
+        ],
+      },
+    },
+  });
+  // The synthetic decoder reports four seconds; only the download matters here.
+  await assert.rejects(visual(f), { code: "INVALID_VISUAL_MANIFEST" });
+  assert.deepEqual(
+    f.calls.slice(1).map((call) => new URL(call.url).hostname),
+    ["fit.bilivideo.com"],
+  );
+  cleaned(f);
+});
+
 test("visual recovers a reset first CDN using a same-quality backup within the shared budget", async (t) => {
   let attempts = 0;
   const backup = "https://backup.mcdn.bilivideo.cn:8082/video.mp4";
