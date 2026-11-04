@@ -12,14 +12,19 @@ import {
   renameSync,
   symlinkSync,
   writeFileSync,
+  rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { Service } from "../lib/service.mjs";
-import { temporaryVideo, videoTrack } from "../lib/visual-media.mjs";
-import { safeError } from "../lib/errors.mjs";
+import {
+  cleanupVideo,
+  temporaryVideo,
+  videoTrack,
+} from "../lib/visual-media.mjs";
+import { Fault, safeError } from "../lib/errors.mjs";
 
 const cdn = "https://synthetic.bilivideo.com/video.mp4";
 const track = {
@@ -724,4 +729,68 @@ test("ordinary local-frames still preserves the user input and uses configured i
       }),
     (e) => e.code === "INVALID_PYTHON_PATH",
   );
+});
+
+test("removal waits out a file still held by a dying process, within a bound", async () => {
+  for (const code of ["EBUSY", "EPERM"]) {
+    let calls = 0;
+    await cleanupVideo({
+      cleanup() {
+        calls += 1;
+        if (calls < 3) throw Object.assign(new Error("held"), { code });
+      },
+    });
+    assert.equal(calls, 3);
+  }
+  // Still held at the bound: reported the same way as any other failed removal.
+  const held = {
+    calls: 0,
+    cleanup() {
+      this.calls += 1;
+      throw Object.assign(new Error("held"), { code: "EBUSY" });
+    },
+  };
+  const failure = new Fault("LOCAL_MEDIA_FAILED");
+  const started = Date.now();
+  await cleanupVideo(held, failure, 120);
+  assert.ok(held.calls > 1);
+  assert.ok(Date.now() - started < 1500);
+  assert.equal(failure.mediaCleanup, "refused_or_failed");
+  await assert.rejects(cleanupVideo(held, undefined, 0), {
+    code: "VISUAL_CLEANUP_FAILED",
+  });
+  // A refusal is an answer, and anything else is not a held file either.
+  for (const cause of [
+    new Fault("VISUAL_CLEANUP_REFUSED"),
+    new Error("other"),
+  ]) {
+    let calls = 0;
+    const flagged = new Fault("LOCAL_MEDIA_FAILED");
+    await cleanupVideo(
+      {
+        cleanup() {
+          calls += 1;
+          throw cause;
+        },
+      },
+      flagged,
+    );
+    assert.equal(calls, 1);
+    assert.equal(flagged.mediaCleanup, "refused_or_failed");
+  }
+});
+
+test("removal retries a real file that only becomes removable later", async (t) => {
+  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "bili-cleanup-")));
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }));
+  const owned = temporaryVideo(dataDir);
+  owned.write(Buffer.from("SYNTHETIC"));
+  let held = 2;
+  await cleanupVideo({
+    cleanup() {
+      if (held-- > 0) throw Object.assign(new Error("held"), { code: "EBUSY" });
+      owned.cleanup();
+    },
+  });
+  assert.equal(existsSync(owned.path), false);
 });
