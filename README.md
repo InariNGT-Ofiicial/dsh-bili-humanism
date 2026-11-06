@@ -189,6 +189,8 @@ dsh plugin --profile web add github:InariNGT-Ofiicial/dsh-bili-humanism#v1.8.0
 
 音频下载允许 `playurl` 返回的 HTTPS `*.mcdn.bilivideo.cn` 默认端口或 8082，以及原有 `*.bilivideo.com` 默认端口。最低码率音轨的主地址被拒或普通传输失败时，可尝试该接口返回的同码率备用地址，仍逐一检查原白名单。不会猜测新域名、提升码率、向 CDN 发送 Cookie 或跟随重定向。风控、持久暂停、字节或请求额度错误立即停止，不通过备用地址继续。本次只做合成接口回归，未实测 CDN 的现场可用性。
 
+本地未发布候选补充媒体 Range 兼容（#25）：媒体 GET 请求 `Range: bytes=0-`，接受完整文件的 200 或 206；206 必须声明从零开始、覆盖全部对象的 Content-Range，正文长度与总长度一致。部分内容、未知总长或截断不能作为成功媒体交付，32 MiB 上限照常生效；普通传输错误可使用原有同轨备用地址。未新增 CDN 域名，没有真实 CDN 请求。
+
 ## 凭据与边界
 
 默认匿名，不扫描浏览器、不自动查找旧账号、不随包携带凭据。需要 A2 时，使用者自己准备本地 JSON，字段 `sessdata`，在宿主插件 config 中设置 `credentialPath`。CLI 使用 `BILI_HUMANISM_CREDENTIAL_FILE` 指向文件，**不要把凭据值放到命令行、对话或 issue**。`disabled: true` 或 `read_valid: false` 会拒绝使用。
