@@ -109,11 +109,7 @@ test("206 media must describe one complete zero-based object, not a partial or u
 });
 
 test("206 media verifies delivered bytes and Content-Length against the whole range", async (t) => {
-  for (const headers of [
-    {},
-    { "content-length": "3" },
-    { "content-length": "unknown" },
-  ]) {
+  for (const headers of [{}, { "content-length": "3" }]) {
     const f = fixture(t, async () => ranged("DATA", "bytes 0-4/5", headers));
     await assert.rejects(f.network.get(cdn, "media"), {
       code: "BODY_READ_FAILED",
@@ -123,15 +119,23 @@ test("206 media verifies delivered bytes and Content-Length against the whole ra
   assert.equal((await exact.network.get(cdn, "media")).toString(), "DATA");
 });
 
-test("206 Content-Range total still enforces the original media-byte cap", async (t) => {
+test("206 range and declared length each enforce the original media-byte cap", async (t) => {
   const total = RESPONSE_BYTE_LIMITS.media + 1;
-  const f = fixture(t, async () =>
-    ranged("DATA", `bytes 0-${total - 1}/${total}`),
-  );
-  await assert.rejects(firstMediaBytes(f.network, f.budget, [cdn, backup]), {
-    code: "RESPONSE_TOO_LARGE",
-  });
-  assert.equal(f.state.requests, 1);
+  for (const response of [
+    () => ranged("DATA", `bytes 0-${total - 1}/${total}`),
+    () => ranged("DATA", "bytes 0-3/4", { "content-length": String(total) }),
+    () =>
+      new Response("DATA", {
+        status: 206,
+        headers: { "content-length": String(total) },
+      }),
+  ]) {
+    const f = fixture(t, response);
+    await assert.rejects(firstMediaBytes(f.network, f.budget, [cdn, backup]), {
+      code: "RESPONSE_TOO_LARGE",
+    });
+    assert.equal(f.state.requests, 1);
+  }
 });
 
 test("ordinary incomplete ranges may use a same-track backup; HTTP risk still stops immediately", async (t) => {
