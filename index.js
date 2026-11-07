@@ -7,6 +7,7 @@ import { DEFAULT_READ_TOKENS } from "./lib/token-gate.mjs";
 import { attachPersonalityShadow } from "./lib/personality-shadow-host.mjs";
 import {
   attachVisualPage,
+  attachOptionalReadVisualPage,
   optionalVisualCapability,
   renderReadOutput,
   renderVisualOutput,
@@ -176,7 +177,7 @@ export function apply(ctx, config = {}) {
         capability.unavailable ??
         (r.result.visual?.status === "unavailable"
           ? r.result.visual
-          : await attachVisualPage(
+          : await attachOptionalReadVisualPage(
               capability.attachments,
               service.store.root,
               r.result.visual,

@@ -456,20 +456,18 @@ test("one read tool call automatically chooses unified visual work and attaches 
   }
 });
 
-test("a visual error reporting a failed cleanup fits the output schema", () => {
+test("visual cleanup failure is valid canonical output and only admits the documented marker", () => {
   const schema = valueSchemaSpecToJsonSchema(VISUAL_OUTPUT_SCHEMA);
-  assert.deepEqual(
-    validateJsonSchemaValue(
-      schema,
-      { error: "E", message: "m", mediaCleanup: "refused_or_failed" },
-      "value",
-    ),
-    [],
-  );
+  const error = {
+    error: "LOCAL_MEDIA_FAILED",
+    message: "LOCAL_MEDIA_FAILED",
+    mediaCleanup: "refused_or_failed",
+  };
+  assert.deepEqual(validateJsonSchemaValue(schema, error, "value"), []);
   assert.ok(
     validateJsonSchemaValue(
       schema,
-      { error: "E", message: "m", mediaCleanup: "something else" },
+      { ...error, mediaCleanup: "unexpected" },
       "value",
     ).length > 0,
   );

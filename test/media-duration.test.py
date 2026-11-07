@@ -94,30 +94,29 @@ class DurationTests(unittest.TestCase):
 
 
 class AsrTailTests(unittest.TestCase):
-    def segments(self, duration, audio_duration, rows):
+    def run_adapter(self, rows, audio_duration=120.6):
         import json
-
-        class FakeModel:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def transcribe(self, path, **kwargs):
-                return iter(SimpleNamespace(start=s, end=e, text=t) for s, e, t in rows), SimpleNamespace(duration=audio_duration)
-
+        class Model:
+            def __init__(self, *args, **kwargs): pass
+            def transcribe(self, *args, **kwargs):
+                return iter(SimpleNamespace(start=a, end=b, text=c) for a,b,c in rows), SimpleNamespace(duration=audio_duration)
         with tempfile.TemporaryDirectory() as folder:
-            source = Path(folder) / "synthetic.m4s"
-            source.write_bytes(b"synthetic")
-            output = Path(folder) / "out.json"
-            args = [str(SCRIPT), "asr", str(source), str(output), "--duration", str(duration), "--model", folder]
-            module = SimpleNamespace(WhisperModel=FakeModel)
-            with patch.object(sys, "argv", args), patch.dict(sys.modules, {"faster_whisper": module}):
-                MEDIA.main()
-            return json.loads(output.read_text(encoding="utf8"))["segments"]
+            source = Path(folder) / "synthetic.m4s"; source.write_bytes(b"synthetic")
+            target = Path(folder) / "asr.json"
+            args = [str(SCRIPT), "asr", str(source), str(target), "--duration", "120", "--model", folder]
+            with patch.object(sys, "argv", args), patch.dict(sys.modules, {"faster_whisper": SimpleNamespace(WhisperModel=Model)}): MEDIA.main()
+            return json.loads(target.read_text(encoding="utf8"))["segments"]
 
-    def test_a_tail_segment_past_the_metadata_stays_ordered_and_keeps_its_words(self):
-        segments = self.segments(120, 120.6, [(0, 2, " 开头 "), (119, 120.4, " 跨过 "), (120.3, 120.6, " 谢谢 ")])
-        self.assertEqual([(s["start"], s["end"], s["text"]) for s in segments],
-                         [(0, 2, "开头"), (119, 120, "跨过"), (120, 120, "谢谢")])
+    def test_valid_accepted_audio_tail_keeps_text_and_order(self):
+        rows = self.run_adapter([(119, 120.2, " First "), (120.3, 120.6, " Tail ")])
+        self.assertEqual(rows, [{"start":119,"end":120,"text":"First"}, {"start":120,"end":120,"text":"Tail"}])
+
+    def test_implausible_or_reversed_tail_is_not_hidden_by_reconciliation(self):
+        for start,end in [(121.2,121.5),(120.4,120.2)]:
+            row = self.run_adapter([(start,end,"Synthetic")])[0]
+            self.assertGreater(row["start"], row["end"])
+        with self.assertRaisesRegex(RuntimeError, "source metadata"):
+            self.run_adapter([(120.3,120.6,"Synthetic")], audio_duration=121.1)
 
 
 if __name__ == "__main__":
