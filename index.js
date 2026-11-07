@@ -196,8 +196,8 @@ export function apply(ctx, config = {}) {
       }
     });
   };
-  // The text is already saved: past this point only cancellation may fail the read. A
-  // pause or budget failure becomes an explicit entry, and the pause stays persisted.
+  // The text is already saved, so only cancellation may fail the read here. A pause or
+  // budget failure becomes an explicit entry, and the pause stays persisted.
   const heardReading = async (source, signal) => {
     try {
       return service.heardView(
