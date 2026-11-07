@@ -9,7 +9,8 @@ import { Service } from "../lib/service.mjs";
 import { Fault } from "../lib/errors.mjs";
 import jpeg from "./visual-fixture.mjs";
 
-function harness(t, mode, route = "A1", criticalCode) {
+function harness(t, mode, route = "A1", criticalCode, options = {}) {
+  const duration = options.duration ?? 742;
   const root = realpathSync(
     mkdtempSync(join(tmpdir(), "humanism-read-image-failure-")),
   );
@@ -34,7 +35,7 @@ function harness(t, mode, route = "A1", criticalCode) {
       bvid: "BV0000000001",
       page: 1,
       cid: 7,
-      duration: 742,
+      duration,
       route,
       title: "Synthetic long source",
       url: "https://www.bilibili.com/video/BV0000000001/?p=1",
@@ -57,9 +58,9 @@ function harness(t, mode, route = "A1", criticalCode) {
     visual = {
       readingId: saved.id,
       path: dir,
-      source: { bvid: saved.bvid, page: 1, cid: 7, duration: 742 },
+      source: { bvid: saved.bvid, page: 1, cid: 7, duration },
       frameOffset: 0,
-      frameCount: mode === "page-invalid" ? 41 : 1,
+      frameCount: mode === "page-invalid" ? (options.frameCount ?? 41) : 1,
       nextOffset: null,
       frames: [
         {
@@ -200,6 +201,54 @@ for (const route of ["A1", "none"])
       assert.equal(direct.parsed.error, "VISUAL_PAGE_INVALID");
       assert.equal(direct.blocks.filter((x) => x.type === "image").length, 0);
     }
+  });
+
+for (const route of ["A1", "none"])
+  test(`an oversized optional frame page keeps the ${route} source usable through frame import and journal`, async (t) => {
+    const f = harness(t, "page-invalid", route, undefined, {
+      duration: 930,
+      frameCount: 57,
+    });
+    const { parsed: reading, blocks } = await f.call("read", {
+      video: "BV0000000001",
+    });
+    assert.ok(reading.result?.id);
+    assert.equal(reading.result.route, route);
+    assert.equal(reading.visual.status, "unavailable");
+    assert.equal(reading.visual.error, "VISUAL_PAGE_INVALID");
+    assert.equal(blocks.filter((x) => x.type === "image").length, 0);
+    const { parsed: imported } = await f.call("import", {
+      readingId: reading.result.id,
+      json: JSON.stringify({
+        route: "frame",
+        segments: [
+          { start: 3, end: 6, text: "Synthetic host-supplied visual text" },
+        ],
+      }),
+    });
+    assert.ok(imported.result?.id);
+    assert.equal(imported.result.route, "frame");
+    assert.equal(imported.result.coverage.state, "visual_text_partial");
+    const args = {
+      readingId: imported.result.id,
+      json: JSON.stringify({
+        encounter: "Synthetic reflection after a local text import",
+        missing:
+          "Only host-supplied text; no validated video images were delivered",
+        evidence: [{ at: 3, claim: "Synthetic host-supplied visual text" }],
+      }),
+    };
+    const { parsed: journal } = await f.call("journal", args);
+    assert.ok(journal.id);
+    assert.equal(journal.readingId, imported.result.id);
+    assert.equal(journal.status, "local_reviewable_draft");
+    assert.equal((await f.call("journal", args)).parsed.id, journal.id);
+    assert.equal(
+      f.service.store.db.prepare("SELECT count(*) n FROM notes").get().n,
+      1,
+    );
+    assert.equal(f.service.store.reading(reading.result.id).route, route);
+    assert.equal(f.inputs.length, 0);
   });
 
 for (const [mode, error] of [
