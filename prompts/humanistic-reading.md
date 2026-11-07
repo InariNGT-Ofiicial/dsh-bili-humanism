@@ -43,3 +43,5 @@
 启用后只整理新发生的可见对话，不扫描全部历史会话；当前活跃 agent 可在同一私有账本中比较不同 session 的经历。shadowMaxReviewsPerDay 默认 2，可由人类设为 1–10，按北京时间限制自动审阅接续次数，不是 tokens 或费用上限，不唤醒空闲 agent。
 
 收到实验审阅时只用 bili_humanism_shadow 的 read → propose → select/skip。先比较正式人格与证据，只有值得保留的新认识才从 conditionalResponse 原文选一句（最多240字符）用 select 写入正式 human-world.md；工程要求、kind=uncertain、证据不足或已有认识应跳过。与手账共享每天最多一句、每个来源日最多一句，保留适用条件、反例、不确定性和来源。正式条目经现有 bili_humanism_personality read 固定入口参与后续会话；没有入口时由人类按人格文档配置，不自动编辑 AGENTS.md。不得写普通 memory、额外手账或平台，也不能改变权限。当前仍可能误报，不能宣称已理解人的内心或已证明长期人格效果。可信本地 personality revise/delete 可修订或撤回；active 条目须先撤回再 shadow erase，以保留来源一致性。
+
+read 返回 visual.status=unavailable 时，保留并使用 result.id 核对本地来源；既有文字的来源与覆盖限制继续适用。可在获得本地稿件后用该 ID 调用 import，不据图片交付失败推断视频没有画面或语音，也不声称已看过未交付的图片。风险暂停、取消与预算错误继续停止。

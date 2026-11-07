@@ -13,7 +13,8 @@ import { attachPersonalityShadow } from "./lib/personality-shadow-host.mjs";
 import {
   attachVisualPage,
   decorateFrames,
-  NO_FRAMES,
+  isHardVisualStop,
+  unavailableVisual,
   optionalVisualCapability,
   renderReadOutput,
   renderSourceOutput,
@@ -208,12 +209,14 @@ export function apply(ctx, config = {}) {
       return service.noteAutoAsr(source, autoAsrFailure(error));
     }
   };
-  // Likewise for the images: the page this read prepared stands in for one that cannot be
-  // shown, for instance from an index whose frames were removed by hand.
+  // The images are optional too, but a pause, budget, credential or denied URL still stops
+  // the read. Otherwise the page this read prepared stands in for one that cannot be shown,
+  // for instance from an index whose frames were removed by hand.
   const readFrames = async (attachments, prepared, readingId, signal) => {
-    const unlessCancelled = (error) => {
-      if (error.code === "CANCELLED") throw error;
-      if (signal?.aborted) throw new Fault("CANCELLED");
+    const unlessHardStop = (error) => {
+      if (signal?.aborted && error.code !== "CANCELLED")
+        throw new Fault("CANCELLED");
+      if (isHardVisualStop(error, signal)) throw error;
     };
     try {
       return await attachFrames(
@@ -222,13 +225,13 @@ export function apply(ctx, config = {}) {
         signal,
       );
     } catch (error) {
-      unlessCancelled(error);
+      unlessHardStop(error);
     }
     try {
       return await attachFrames(attachments, prepared, signal);
     } catch (error) {
-      unlessCancelled(error);
-      return { status: "unavailable", ...safeError(error), note: NO_FRAMES };
+      unlessHardStop(error);
+      return unavailableVisual(error);
     }
   };
   const viewerReactions = async (readingId, signal) => {
