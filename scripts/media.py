@@ -41,7 +41,11 @@ def main():
         rows=[]
         for s in result:
             if time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('ASR wall budget exceeded')
-            rows.append({'start':s.start,'end':min(s.end,a.duration),'text':s.text.strip()})
+            # Only reconcile an ordered tail inside the already accepted decoded duration.
+            # Implausible or reversed times remain invalid for the strict importer.
+            start=s.start
+            if a.duration<start<=info.duration and start<=s.end:start=a.duration
+            rows.append({'start':start,'end':min(s.end,a.duration),'text':s.text.strip()})
         a.output.parent.mkdir(parents=True,exist_ok=True)
         a.output.write_text(json.dumps({'route':'A3','duration':a.duration,'segments':rows,'note':'AI-ASR, not verbatim; proper names need source checking.'},ensure_ascii=False,indent=2),encoding='utf8')
     else:

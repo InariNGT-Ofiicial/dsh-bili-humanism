@@ -191,6 +191,8 @@ dsh plugin --profile web add github:InariNGT-Ofiicial/dsh-bili-humanism#v1.8.0
 
 本地未发布候选补充媒体 Range 兼容（#25）：媒体 GET 请求 `Range: bytes=0-`，接受完整文件的 200 或 206；206 必须声明从零开始、覆盖全部对象的 Content-Range，正文长度与总长度一致。部分内容、未知总长或截断不能作为成功媒体交付，32 MiB 上限照常生效；普通传输错误可使用原有同轨备用地址。未新增 CDN 域名，没有真实 CDN 请求。
 
+本地未发布候选补充 `INVALID_TIMESTAMP` 的数值诊断：同一次读取失败的 `message` 会带原始输入的零起点分段索引、规范化起止秒数、来源时长、分段数和全轨时间范围，不含正文、地址或凭据，不额外请求平台。严格拒绝异常轨，不丢段或静默截断；见[时间戳诊断](docs/PLAYER_ENDPOINT.md#时间戳诊断本地未发布2026-11-07)。另修复有效本地 ASR 尾段的起止倒置，以及视觉清理错误的输出 schema；这些是独立问题，未据此宣称 #28 的 A1 现场根因已确定。
+
 ## 凭据与边界
 
 默认匿名，不扫描浏览器、不自动查找旧账号、不随包携带凭据。需要 A2 时，使用者自己准备本地 JSON，字段 `sessdata`，在宿主插件 config 中设置 `credentialPath`。CLI 使用 `BILI_HUMANISM_CREDENTIAL_FILE` 指向文件，**不要把凭据值放到命令行、对话或 issue**。`disabled: true` 或 `read_valid: false` 会拒绝使用。
