@@ -1,4 +1,6 @@
-# 本地未发布：时间戳诊断及 ASR/视觉错误修复 — 2026-11-07
+# 未发布源码：时间戳诊断及 ASR/视觉错误修复 — 2026-11-07
+
+修复源码先推维护分支，只有同提交必需的 Windows/Linux/macOS 离线 CI、Windows/Linux × rc.2/rc.3 基础宿主检查通过，并已有对应隔离 Desktop 包验收后，才快进同步 main。公开发行包与 main 分开核验；以下较早日期的“未推送/待验收”是当日快照。
 
 根据 [#28](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/issues/28) 增加既有错误的数值诊断；独立离线验证 [#26](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/pull/26) 的本地 ASR 尾段与视觉错误 schema 两处问题。没有访问反馈中的真实来源，没有执行贡献者脚本或批准外部工作流。
 
@@ -13,8 +15,8 @@
 | 视觉错误 | schema 接受唯一既有 mediaCleanup 标记，拒绝其他取值；尚未执行真实 Windows 进程占用/终止测试，不增加清理重试 |
 | 隔离真实宿主 | 本次候选 TGZ 在全新 Windows DSH Desktop 内置 CLI 0.2.1-rc.3 profile 离线禁脚本安装，无源码链接；10 组原生宿主、6 组包内 CLI 对照通过 |
 | 新宿主场景 | read/CLI 返回数值时间戳诊断且不保留部分缓存；read 保留来源，显式 visual/frames 的清理错误通过原生输出验证。清理标记来自受控故障，未模拟真实进程占用 |
-| 包与系统限制 | 合成平台回复、受控解码和禁模型适配器；本地 ASR 仅用合成 Python 转写替身验证。候选跨系统 CI、真实 ASR 推理、真实 Windows 占用测试未执行，DSH 0.2.2 未验收 |
-| 发布 | 仅本地候选，未推送、未发布；公开 main 与 v1.11.3 不变 |
+| 包与系统限制 | 合成平台回复、受控解码和禁模型适配器；本地 ASR 仅用合成 Python 转写替身验证。跨系统 CI 按本提交的 GitHub Actions 核验；真实 ASR 推理、真实 Windows 占用及 DSH 0.2.2 未验收 |
+| 发布 | 修复源码随此提交推送；未创建新 Release，公开安装包仍为 v1.11.3 |
 
 验收包声明版本仍为 1.11.3，仅是本地候选；SHA-256 `9f6c542a55b5374dfa7d07f84de1931e54d927357e8df9f87d201fdf276e300f`，60 个文件与打包目录逐字节一致。54 个与固定修复提交 `c631a92` 的 Git blob 完全相同，6 个仅 CRLF/LF 差异，换行规范化后 60 个均匹配；排除测试、work、outputs 和私人材料。后续提交仅记录验收，不将本包当作公开 v1.11.3 附件。
 
