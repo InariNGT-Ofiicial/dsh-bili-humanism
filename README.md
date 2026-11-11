@@ -1,12 +1,12 @@
 # DSH B站内容学习插件
 
-[v1.11.4](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.4) · 签名字幕、读取链路与媒体下载维护修复。
+[v1.11.5](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.5) · 默认取消任务总时限，保留人工设限与既有控制。
 
-**后续源码更新（尚未进入 v1.11.4 附件）：默认不再设置任务总时限。** 媒体下载、本地 ASR 和抽帧可继续超过 90 秒；人类可用 `limits.wallMs` 自设时限。取消、持久暂停、每日窗口截止、请求和字节额度仍有效，详见[人工时限配置](docs/MEDIA_LIMITS.md)。
+**v1.11.5 默认不再设置任务总时限。** 媒体下载、本地 ASR 和抽帧可继续超过 90 秒；人类可用 `limits.wallMs` 自设时限。取消、持久暂停、每日窗口截止、请求和字节额度仍有效，详见[人工时限配置](docs/MEDIA_LIMITS.md)。
 
 A1 使用带 WBI 签名的 `/x/player/wbi/v2`，通过 read-v3 隔离旧版读取缓存，跳过缺失地址的字幕轨。此前的两条小预算接口对照定位到未签名回复提供了与目标不符的字幕轨；签名与身份字段一致仍不代表自动核实语义归属。取稿、导入、风险和预算边界继续生效，详见[字幕来源与诊断说明](docs/PLAYER_ENDPOINT.md)。
 
-read 已保存来源后，可选图片准备或交付失败会返回 `result.id`、既有文字及 `visual.status: unavailable`。导入本地稿件后，用 import 返回的 `result.id` 写手账；没有取得的画面不能写成已经看过。v1.11.4 同时包含完整 Range、时间戳数值诊断、有效本地 ASR 尾段和视觉错误 schema 修复，以及媒体正文超时修复；默认任务总预算仍为 90 秒。详见[验收记录](docs/ACCEPTANCE.md)。
+read 已保存来源后，可选图片准备或交付失败会返回 `result.id`、既有文字及 `visual.status: unavailable`。导入本地稿件后，用 import 返回的 `result.id` 写手账；没有取得的画面不能写成已经看过。v1.11.4 同时包含完整 Range、时间戳数值诊断、有效本地 ASR 尾段和视觉错误 schema 修复，以及媒体正文超时修复；v1.11.5 进一步取消默认任务总时限。详见[验收记录](docs/ACCEPTANCE.md)。
 
 安装到实际使用的同一 DSH profile，核对版本和 SHA-256 后重载。保留原 dataDir、来源、手账、人格和持久暂停；v1.11.3 附件不含这些后续 main 修复，不能用仅同版号的旧候选包代替本次正式包。
 
