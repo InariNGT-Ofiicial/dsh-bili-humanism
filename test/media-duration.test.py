@@ -75,6 +75,19 @@ class DurationTests(unittest.TestCase):
                 self.assertLessEqual(len(manifest["frames"]), 40)
                 self.assertGreater(manifest["frames"][-1]["at"], duration * 0.9)
 
+    def test_optional_python_wall_time_has_no_hidden_default_and_honors_human_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "synthetic.mp4"; source.write_bytes(b"synthetic")
+            base = [str(SCRIPT), "frames", str(source), str(Path(folder) / "out"), "--duration", "927"]
+            av = SimpleNamespace(open=lambda _path: FakeContainer(927))
+            for extra in [[], ["--max-wall-seconds", "90"]]:
+                with self.subTest(extra=extra), patch.object(sys, "argv", base + extra), patch.dict(sys.modules, {"av": av}), patch.object(MEDIA.time, "monotonic", side_effect=[0] + [1000] * 3000):
+                    if extra:
+                        with self.assertRaisesRegex(RuntimeError, "wall budget exceeded"): MEDIA.main()
+                    else:
+                        MEDIA.main()
+                        self.assertTrue((Path(folder) / "out/manifest.json").exists())
+
     def test_explicit_cap_and_invalid_numbers_fail_before_optional_dependencies(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "synthetic.mp4"
@@ -86,6 +99,9 @@ class DurationTests(unittest.TestCase):
                 ["--duration", "9007199254740992"],
                 ["--duration", "927", "--max-seconds", "nan"],
                 ["--duration", "927", "--max-seconds", "inf"],
+                ["--duration", "927", "--max-wall-seconds", "nan"],
+                ["--duration", "927", "--max-wall-seconds", "inf"],
+                ["--duration", "927", "--max-wall-seconds", "-1"],
             ]:
                 with self.subTest(argv=argv), patch.object(sys, "argv", base + argv):
                     with self.assertRaises(SystemExit) as caught:
