@@ -47,7 +47,7 @@ autoAsrMaxSeconds: 1200
 autoAsrWallMs: 240000
 ```
 
-`autoAsrMaxSeconds` 是自动转写接受的最长来源时长，默认 1200 秒，与 `maxMediaSeconds` 同时生效，取较小者；更长的来源跳过，`attempts` 记 `auto_skipped_duration`，文字和抽帧不受影响。`autoAsrWallMs` 是这一任务单独的墙钟预算，默认 240000 毫秒，不占读取任务的 90 秒；音轨下载和转写共用它，音轨正文和其他媒体正文一样使用任务剩余墙钟时间，慢或卡住的音轨最长可占满它。超时明确记为 `auto_unavailable`，不写入半份文字；转写阶段超时的来源，调大后下次读取会再跑，不调大就不重跑；还在下载时超时的不记入，下次读取会再试。32 MiB 媒体响应上限和 12 次请求照旧。两项都只接受正安全整数，非法值启动时拒绝。当前生效值见 `status.media.autoAsr`，用法见[本地抽帧说明](LOCAL_FRAMES.md)。
+`autoAsrMaxSeconds` 是自动转写接受的最长来源时长，默认 1200 秒，与 `maxMediaSeconds` 同时生效，取较小者；更长的来源跳过，`attempts` 记 `auto_skipped_duration`，文字和抽帧不受影响。`autoAsrWallMs` 是这一任务单独的墙钟预算，默认 240000 毫秒，和读取任务分开算，不随 `limits.wallMs` 变；音轨下载和转写共用它，音轨正文和其他媒体正文一样使用任务剩余墙钟时间，慢或卡住的音轨最长可占满它。超时明确记为 `auto_unavailable`，不写入半份文字；转写阶段超时的来源，调大后下次读取会再跑，不调大就不重跑；还在下载时超时的不记入，下次读取会再试。32 MiB 媒体响应上限和 12 次请求照旧。两项都只接受正安全整数，非法值启动时拒绝。当前生效值见 `status.media.autoAsr`，用法见[本地抽帧说明](LOCAL_FRAMES.md)。
 
 ## 响应字节与时长的诊断（1.11.1）
 

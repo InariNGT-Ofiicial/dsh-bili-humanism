@@ -251,7 +251,7 @@ bili-humanism resume --acknowledge-account-risk
 
 每个网络任务最多 12 次请求、3 个候选；默认没有任务总时限，也不默认限制媒体来源时长。使用者可通过 `limits.wallMs` 设置整轮任务的毫秒时限，或通过 `maxMediaSeconds` 设置来源时长上限。未填写或设为 null 的 `limits.wallMs` 表示不设任务时限；显式旧值 90000 继续有效，0 表示立即停止。媒体响应头须在 15 秒内到达；正文没有默认总时限，若设置人工时限则与前序步骤及备用地址共享剩余时间。API/字幕 JSON 保持 15 秒整请求超时，取消、持久暂停和每日取稿窗口截止仍会停止任务。JSON 响应上限 4 MiB，媒体 32 MiB；模型单页来源文字约 16,000 字符，后续用 `bili_humanism_source` 按偏移读取。
 
-默认关闭的 `autoAsr` 由人工开启后，自动转写任务不占上面的 90 秒，另用 `autoAsrWallMs`（默认 240 秒，音轨下载和转写共用），见[媒体预算](docs/MEDIA_LIMITS.md)。
+默认关闭的 `autoAsr` 由人工开启后，自动转写任务有自己的时限 `autoAsrWallMs`（默认 240 秒，音轨下载和转写共用），不随 `limits.wallMs` 变，见[媒体预算](docs/MEDIA_LIMITS.md)。
 
 从 1.4.1 起，默认 600,000 是**每次字幕、A2 文字或本地 ASR／画面文字取稿的估算 token 上限**。每份稿件独立计额，不累计到下一次，不读取整场宿主会话的 provider usage，也不再因此拦截手账、记忆或人格选句。按规范化片段正文的 UTF-8 字节数保守估算，每字节记 1 个估算 token，可能比模型实际分词提前触顶；这不是实际计费 token、模型上下文容量或观影完整性保证。`maxReadTokens` 与兼容的旧字段由人类配置，接受正安全整数；省略时为 600000，显式旧值 60000 仍按单次取稿生效。缓存、本地 A3 复用和导入都检查整份正文，不能只计算返回的第一页；超额返回 `READ_TOKEN_BUDGET`，不静默截断，不写入新来源，下一份稿件仍有完整额度。旧会话基线留存供回滚，不删除风险暂停或账号额度。长稿继续按 `bili_humanism_source` 的 `next_offset` 分页阅读；CLI 与 DSH 工具采用同一规则。取稿本身不调用模型，`usage.tokens: null` 仍表示没有实际模型用量。详见[取稿 token 额度](docs/TOKEN_BUDGET.md)。
 
