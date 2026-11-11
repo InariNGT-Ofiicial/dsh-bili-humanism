@@ -1,10 +1,14 @@
 # DSH B站内容学习插件
 
-[v1.11.3](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.3) · 修复空字幕缓存、音频备用地址与长来源图片交付。
+[v1.11.5](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.5) · 默认取消任务总时限，保留人工设限与既有控制。
 
-**未发布候选：** 针对 #19/#16 字幕串台，A1 改用带 WBI 签名的 `/x/player/wbi/v2`，并隔离旧版全部读取缓存。已用原身份和请求头小预算对照两条反馈来源，定位到未签名接口返回的字幕轨与目标内容不符；服务端内部成因与普遍稳定性尚未确认。签名成功也不代表语义归属已经核实。验证范围与升级/回滚边界见[字幕入口修复说明](docs/PLAYER_ENDPOINT.md)。已发布 v1.11.3 仍使用 `/x/player/v2`。
+**v1.11.5 默认不再设置任务总时限。** 媒体下载、本地 ASR 和抽帧可继续超过 90 秒；人类可用 `limits.wallMs` 自设时限。取消、持久暂停、每日窗口截止、请求和字节额度仍有效，详见[人工时限配置](docs/MEDIA_LIMITS.md)。
 
-未发布的读取补丁：播放器列出却没有地址的字幕轨会被跳过，继续按原顺序选择可用轨；全部无地址时明确未确认。有内容的非法地址仍报错，详情见[字幕入口说明](docs/PLAYER_ENDPOINT.md)。
+A1 使用带 WBI 签名的 `/x/player/wbi/v2`，通过 read-v3 隔离旧版读取缓存，跳过缺失地址的字幕轨。此前的两条小预算接口对照定位到未签名回复提供了与目标不符的字幕轨；签名与身份字段一致仍不代表自动核实语义归属。取稿、导入、风险和预算边界继续生效，详见[字幕来源与诊断说明](docs/PLAYER_ENDPOINT.md)。
+
+read 已保存来源后，可选图片准备或交付失败会返回 `result.id`、既有文字及 `visual.status: unavailable`。导入本地稿件后，用 import 返回的 `result.id` 写手账；没有取得的画面不能写成已经看过。v1.11.4 同时包含完整 Range、时间戳数值诊断、有效本地 ASR 尾段和视觉错误 schema 修复，以及媒体正文超时修复；v1.11.5 进一步取消默认任务总时限。详见[验收记录](docs/ACCEPTANCE.md)。
+
+安装到实际使用的同一 DSH profile，核对版本和 SHA-256 后重载。保留原 dataDir、来源、手账、人格和持久暂停；v1.11.3 附件不含这些后续 main 修复，不能用仅同版号的旧候选包代替本次正式包。
 
 兼容维护：修复卸载后未关闭账本与调度器的问题，同时支持 **DSH 0.2.1-rc.2 / rc.3**，保留旧版用法与设置。验证范围与复现见 [DSH 兼容说明](docs/DSH_COMPATIBILITY.md)。
 
@@ -187,6 +191,10 @@ dsh plugin --profile web add github:InariNGT-Ofiicial/dsh-bili-humanism#v1.8.0
 
 音频下载允许 `playurl` 返回的 HTTPS `*.mcdn.bilivideo.cn` 默认端口或 8082，以及原有 `*.bilivideo.com` 默认端口。最低码率音轨的主地址被拒或普通传输失败时，可尝试该接口返回的同码率备用地址，仍逐一检查原白名单。不会猜测新域名、提升码率、向 CDN 发送 Cookie 或跟随重定向。风控、持久暂停、字节或请求额度错误立即停止，不通过备用地址继续。本次只做合成接口回归，未实测 CDN 的现场可用性。
 
+v1.11.4 补充媒体 Range 兼容（#25）：媒体 GET 请求 `Range: bytes=0-`，接受完整文件的 200 或 206；206 必须声明从零开始、覆盖全部对象的 Content-Range，正文长度与总长度一致。部分内容、未知总长或截断不能作为成功媒体交付，32 MiB 上限照常生效；普通传输错误可使用原有同轨备用地址。未新增 CDN 域名，没有真实 CDN 请求。
+
+v1.11.4 补充 `INVALID_TIMESTAMP` 的数值诊断：同一次读取失败的 `message` 会带原始输入的零起点分段索引、规范化起止秒数、来源时长、分段数和全轨时间范围，不含正文、地址或凭据，不额外请求平台。严格拒绝异常轨，不丢段或静默截断；见[时间戳诊断](docs/PLAYER_ENDPOINT.md)。另修复有效本地 ASR 尾段的起止倒置，以及视觉清理错误的输出 schema；这些是独立问题，未据此宣称 #28 的 A1 现场根因已确定。
+
 ## 凭据与边界
 
 默认匿名，不扫描浏览器、不自动查找旧账号、不随包携带凭据。需要 A2 时，使用者自己准备本地 JSON，字段 `sessdata`，在宿主插件 config 中设置 `credentialPath`。CLI 使用 `BILI_HUMANISM_CREDENTIAL_FILE` 指向文件，**不要把凭据值放到命令行、对话或 issue**。`disabled: true` 或 `read_valid: false` 会拒绝使用。
@@ -228,7 +236,7 @@ bili-humanism resume --acknowledge-account-risk
 
 ## 读取失败的排查
 
-成功请求或 `coverage.state: partial` 不代表字幕已确认属于当前视频。未发布候选对 A1 加签，检查返回的 BV/CID/aid（如有）与元信息是否一致，明确冲突报 `SUBTITLE_SOURCE_MISMATCH` 并停止，不下载字幕、不回退 A2、不缓存该结果。两条实测错轨也返回了正确身份字段，因此这道检查不能发现所有语义误配；合法的字幕 URL 可以是无视频标识的哈希路径。结果中的 `subtitleSource` 标记签名入口、缓存协议和已比对字段，`semanticVerification` 始终为 `unverified`。若正文与标题、分 P 或画面明显冲突，暂停据此生成信笺、记忆和人格摘句，保留来源待核对；不裁改时间戳或频繁读取。无字幕或覆盖率低本身不能证明串台。详见 [维护记录](docs/MAINTENANCE.md)。
+成功请求或 `coverage.state: partial` 不代表字幕已确认属于当前视频。v1.11.4 对 A1 加签，检查返回的 BV/CID/aid（如有）与元信息是否一致，明确冲突报 `SUBTITLE_SOURCE_MISMATCH` 并停止，不下载字幕、不回退 A2、不缓存该结果。两条实测错轨也返回了正确身份字段，因此这道检查不能发现所有语义误配；合法的字幕 URL 可以是无视频标识的哈希路径。结果中的 `subtitleSource` 标记签名入口、缓存协议和已比对字段，`semanticVerification` 始终为 `unverified`。若正文与标题、分 P 或画面明显冲突，暂停据此生成信笺、记忆和人格摘句，保留来源待核对；不裁改时间戳或频繁读取。无字幕或覆盖率低本身不能证明串台。详见 [维护记录](docs/MAINTENANCE.md)。
 
 独立 CLI 不会自动读取 DSH profile 的 `cordis.patch.yml`。需要使用自己已有的读取凭据时，在 CLI 设置 `BILI_HUMANISM_CREDENTIAL_FILE` 为本地凭据 JSON 的路径，或用 `BILI_HUMANISM_CONFIG_FILE` 指向包含 `credentialPath` 的私有 JSON 配置；同时沿用宿主的 `dataDir`（`BILI_HUMANISM_HOME` 或该 JSON 中的 `dataDir`）。JSON 配置中的同名字段优先于环境变量。只填写路径，不把 Cookie 放进命令参数、聊天或 issue。
 
@@ -240,7 +248,7 @@ bili-humanism resume --acknowledge-account-risk
 
 人工设置示例：在 profile 的可信插件 config 中填写 `maxReadTokens: 1200000`（或更小的正整数），保存后重载。旧字段 `maxSessionTokens` 仍可使用，但改为单次取稿口径；两者同时填写时 `maxReadTokens` 优先。DSH patch 会替换整行 config，修改现有行时须保留其他需要的配置项；本项目不提供可由模型调用的预算设置工具。
 
-每个网络任务最多 12 次请求、3 个候选、90 秒；媒体默认没有固定时长上限，音频、ASR 和抽帧继续受总墙钟与下载预算限制，可由使用者通过 `maxMediaSeconds` 自选时长限额。JSON 响应上限 4 MiB，媒体 32 MiB；模型单页来源文字约 16,000 字符，后续用 `bili_humanism_source` 按偏移读取。
+每个网络任务最多 12 次请求、3 个候选；默认没有任务总时限，也不默认限制媒体来源时长。使用者可通过 `limits.wallMs` 设置整轮任务的毫秒时限，或通过 `maxMediaSeconds` 设置来源时长上限。未填写或设为 null 的 `limits.wallMs` 表示不设任务时限；显式旧值 90000 继续有效，0 表示立即停止。媒体响应头须在 15 秒内到达；正文没有默认总时限，若设置人工时限则与前序步骤及备用地址共享剩余时间。API/字幕 JSON 保持 15 秒整请求超时，取消、持久暂停和每日取稿窗口截止仍会停止任务。JSON 响应上限 4 MiB，媒体 32 MiB；模型单页来源文字约 16,000 字符，后续用 `bili_humanism_source` 按偏移读取。
 
 从 1.4.1 起，默认 600,000 是**每次字幕、A2 文字或本地 ASR／画面文字取稿的估算 token 上限**。每份稿件独立计额，不累计到下一次，不读取整场宿主会话的 provider usage，也不再因此拦截手账、记忆或人格选句。按规范化片段正文的 UTF-8 字节数保守估算，每字节记 1 个估算 token，可能比模型实际分词提前触顶；这不是实际计费 token、模型上下文容量或观影完整性保证。`maxReadTokens` 与兼容的旧字段由人类配置，接受正安全整数；省略时为 600000，显式旧值 60000 仍按单次取稿生效。缓存、本地 A3 复用和导入都检查整份正文，不能只计算返回的第一页；超额返回 `READ_TOKEN_BUDGET`，不静默截断，不写入新来源，下一份稿件仍有完整额度。旧会话基线留存供回滚，不删除风险暂停或账号额度。长稿继续按 `bili_humanism_source` 的 `next_offset` 分页阅读；CLI 与 DSH 工具采用同一规则。取稿本身不调用模型，`usage.tokens: null` 仍表示没有实际模型用量。详见[取稿 token 额度](docs/TOKEN_BUDGET.md)。
 

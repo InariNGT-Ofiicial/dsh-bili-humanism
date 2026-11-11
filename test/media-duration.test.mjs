@@ -120,6 +120,7 @@ test("media has no fixed default duration gate, including sources beyond six hou
       assert.equal(f.service.status().media.maxSourceSeconds, null);
       const argv = f.children[0];
       assert.ok(!argv.includes("--max-seconds"));
+      assert.ok(!argv.includes("--max-wall-seconds"));
       assert.equal(
         Number(argv[argv.indexOf("--interval") + 1]),
         Math.max(15, duration / 39),
@@ -130,7 +131,7 @@ test("media has no fixed default duration gate, including sources beyond six hou
       );
       assert.equal(existsSync(argv[2]), false);
       assert.equal(read.usage.requests, 6);
-      assert.equal(f.service.limits.wallMs, 90000);
+      assert.equal(f.service.limits.wallMs, null);
       assert.equal(f.service.limits.requests, 12);
     });
 });
@@ -266,4 +267,56 @@ test("optional Python adapter preserves long-source and precision boundaries", (
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
+});
+
+test("task wall time is unlimited by default after 103 seconds", async (t) => {
+  const f = fixture(t);
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const report = await f.service.task(async (network, budget) => {
+    t.mock.timers.tick(103000);
+    assert.equal(budget.remaining(), Infinity);
+    return (await network.get("https://api.bilibili.com/x/web-interface/nav"))
+      .code;
+  });
+  assert.equal(report.result, 0);
+  assert.ok(report.usage.elapsed_ms >= 103000);
+  assert.equal(f.service.status().media.taskWallMs, null);
+});
+
+test("task wall time accepts and enforces a human limit above 90 seconds", async (t) => {
+  const config = Config({ limits: { wallMs: 180000 } });
+  const f = fixture(t, 927, { limits: config.limits });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  let passedNinety = false;
+  await assert.rejects(
+    f.service.task(async (network, budget) => {
+      t.mock.timers.tick(103000);
+      await network.get("https://api.bilibili.com/x/web-interface/nav");
+      passedNinety = true;
+      t.mock.timers.tick(80000);
+      budget.check();
+    }),
+    { code: "WALL_BUDGET" },
+  );
+  assert.equal(passedNinety, true);
+  assert.equal(f.service.status().media.taskWallMs, 180000);
+});
+
+test("human wall time is forwarded to the media worker and invalid limits fail clearly", async (t) => {
+  const f = fixture(t, 927, { limits: { wallMs: 180000 } });
+  const read = await f.service.read("BV0000000001");
+  const audio = await f.service.audio(read.result.id);
+  await f.service.localMedia("frames", read.result.id, audio.result.path);
+  const argv = f.children[0];
+  const limit = Number(argv[argv.indexOf("--max-wall-seconds") + 1]);
+  assert.ok(limit > 0 && limit <= 180);
+  for (const value of [-1, 0.5, Infinity, NaN, 2147483648, "180000"])
+    assert.throws(
+      () =>
+        new Service({
+          dataDir: f.service.store.root,
+          limits: { wallMs: value },
+        }),
+      { code: "INVALID_LIMIT" },
+    );
 });

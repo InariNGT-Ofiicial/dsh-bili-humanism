@@ -7,6 +7,7 @@ import { DEFAULT_READ_TOKENS } from "./lib/token-gate.mjs";
 import { attachPersonalityShadow } from "./lib/personality-shadow-host.mjs";
 import {
   attachVisualPage,
+  attachOptionalReadVisualPage,
   optionalVisualCapability,
   renderReadOutput,
   renderVisualOutput,
@@ -36,7 +37,7 @@ export const Config = z.object({
     .max(Number.MAX_SAFE_INTEGER)
     .required(false)
     .description(
-      "Optional human-configured media source-duration limit in seconds. Omitted means no fixed duration limit; request, byte, wall-time and frame-count budgets still apply. Not a model tool parameter.",
+      "Optional human-configured media source-duration limit in seconds. Omitted means no fixed duration limit; request, byte and frame-count budgets still apply; task wall time is unlimited unless a human sets limits.wallMs. Not a model tool parameter.",
     ),
   maxReadTokens: z
     .natural()
@@ -176,7 +177,7 @@ export function apply(ctx, config = {}) {
         capability.unavailable ??
         (r.result.visual?.status === "unavailable"
           ? r.result.visual
-          : await attachVisualPage(
+          : await attachOptionalReadVisualPage(
               capability.attachments,
               service.store.root,
               r.result.visual,
