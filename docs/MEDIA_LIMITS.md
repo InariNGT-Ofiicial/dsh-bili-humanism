@@ -37,6 +37,18 @@ maxMediaSeconds: 1200
 
 直接调用可选 `scripts/media.py` 时也不再默认限制为 600 秒；使用者仍可用 `--max-seconds` 明确设限。插件只转发经过校验的人工限额，并独立核对解码时长与来源元数据。整数来源时长允许最多一秒的解码精度差，但该容差不能越过人工限额。非法、非有限或超出安全表示范围的时长始终拒绝。
 
+## 自动本地 ASR 的限额
+
+默认关闭的 `autoAsr` 有两项自己的可信配置，模型工具、视频正文和候选视频都不能设置：
+
+```yaml
+autoAsr: true
+autoAsrMaxSeconds: 1200
+autoAsrWallMs: 240000
+```
+
+`autoAsrMaxSeconds` 是自动转写接受的最长来源时长，默认 1200 秒，与 `maxMediaSeconds` 同时生效，取较小者；更长的来源跳过，`attempts` 记 `auto_skipped_duration`，文字和抽帧不受影响。`autoAsrWallMs` 是这一任务单独的墙钟预算，默认 240000 毫秒，和读取任务分开算，不随 `limits.wallMs` 变；音轨下载和转写共用它，音轨正文和其他媒体正文一样使用任务剩余墙钟时间，慢或卡住的音轨最长可占满它。超时明确记为 `auto_unavailable`，不写入半份文字；转写阶段超时的来源，调大后下次读取会再跑，不调大就不重跑；还在下载时超时的不记入，下次读取会再试。32 MiB 媒体响应上限和 12 次请求照旧。`autoAsrMaxSeconds` 接受正安全整数，`autoAsrWallMs` 接受 1 到 2147483647 的整数毫秒（上限同 `limits.wallMs`），非法值启动时拒绝。当前生效值见 `status.media.autoAsr`，用法见[本地抽帧说明](LOCAL_FRAMES.md)。
+
 ## 响应字节与时长的诊断（1.11.1）
 
 `RESPONSE_TOO_LARGE` 表示单个响应超出字节上限，不是来源时长门。媒体响应固定最多33554432字节（32 MiB），API/字幕 JSON 固定最多4194304字节（4 MiB）。有 Content-Length 时报告声明值；流式超限时报告已读下限，不假称完整文件大小。错误不回显媒体 URL、签名、凭据或原始平台响应。CLI 与宿主采用同一安全错误序列化。

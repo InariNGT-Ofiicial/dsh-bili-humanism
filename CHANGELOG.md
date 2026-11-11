@@ -1,5 +1,40 @@
 # Changelog
 
+## 未发布 — 工具输出：台词、画面与弹幕落到同一时刻
+
+- `bili_humanism_read` 的顺序改为：取文字并备好画面 → 条件满足时自动 ASR，重新载入阅读视图 → 取弹幕 → 交付第一页画面。结构化值增加 `result.danmaku`（`ready` 或 `unavailable`）。自动 ASR 和弹幕失败不会让读取失败，只记在 `attempts` 和 `result.danmaku`；风险暂停照常持久生效，下一次读取仍会拒绝。图片页取不到或交付失败时退回本次备好的页，还不行就把 `visual` 记为 `unavailable`；退回的页属于另一个来源 ID 时，画面头部写明它的 `readingId`，翻页用它。自动 ASR 和弹幕只有取消会让读取失败；交付图片时，取消、风险暂停、凭据、预算和 URL 拒绝仍让读取失败，其他错误只记为 `unavailable`。准备文字和画面这一步遇到取消、风险暂停、凭据或预算错误，仍和原来一样让这次读取只返回错误（文字已入账）。
+- 自动 ASR 打开时，`attempts` 报告这次读取自己的结果，只从账本行带上自动条目；复用已存 A3 时结构化值同时给出 `reusedLocalSource` 和本次的 `networkSource`。
+- 首次读取先备好帧、暂不写入翻页顺序，弹幕到齐后才定下，弹幕峰值因此能影响新视频的第一页。已有索引但没有可用顺序时同样如此。顺序一旦写入就不再改变。转写产生新来源 ID 时，画面页和标注都换到新 ID。
+- `bili_humanism_read`、`visual`、`frames` 返回的每张图增加可选 `said`、`danmaku`，取自 `Service.frameContext`，只读缓存，不发请求。
+- 模型看到的内容与结构化值分开，结构化值保持完整。`renderReadingText` 输出单行 JSON 头（去掉 `tokenBudget`、`usage`、`cached`、`deduplicated`、`networkSource`、`reusedLocalSource`、`coverage` 的 `missing` 和 `note`、`attempts` 的 `note` 和长说明；`subtitleSource` 只留 `subtitleVerification`）、纯文本转写（`[mm:ss] 文字`，时长满一小时用 `[h:mm:ss]`，相邻片段合并到 15 秒或 80 字，间隔 5 秒以上另起一行，一字不丢）和不超过 1800 字符的弹幕块。`bili_humanism_source` 用同样的转写格式。
+- 画面头部压成一行状态加一句说明，图片标签改为 `[mm:ss] frame | said: … | danmaku: …`。覆盖提醒只在头部出现一次；`at` 取的帧说明这是选定时刻，不说铺开全片；第一页之后的页说明是在填空隙。来源文字里的换行压成空格，不能伪造输出行。
+- 来源文字也不能冒充程序算出的内容：图片标签字段值里的 `|` 换成 `｜`；弹幕文字里的 ` ×数字` 和 ` / ` 换成 ` x数字` 和 ` ／ `，账本里存的文字和转写正文不变；`frameContext` 的弹幕逐条放进 80 字，放不下的截短文字、不截次数；头部 JSON 转义 U+0085、U+2028、U+2029。
+- 现有测试的改动：`media-cache` 的请求总数从 6 改为 8，因为读取工具每个来源 ID 多取一次弹幕；`visual-output` 的参数列表多了 `at`；`read-image-failure` 的替身多了 `Service.danmaku`，否则读取工具取弹幕那一步会在这个文件里发出真实请求。
+- 合成响应和替身媒体进程之外，在真实读取里核对过模型看到的文字：一支约 22 分钟、908 段字幕的视频，从约 11.4 万字符降到约 1.2 万字符。打包后装进真实 DSH Desktop 0.2.1-rc.5（不在声明的实测范围内），核对过请求里的工具说明和一次真实读取的结果。`npm run test:host` 未在本地跑。
+
+## 未发布 — 画面分页、选定时刻与自动本地 ASR
+
+- 抽帧分页铺开全片：第一页取四等分每段中心最近的帧，已缓存的弹幕峰值优先替换所在段的中心；后续页填最大的空隙，最后几页只剩余下的帧。每页按时间排序，`frameOffset` 与 `nextOffset` 仍是顺序中的位置。顺序写入 `visual:` 索引后，之后才到的弹幕不改变翻页；旧版索引第一次读取时补上。
+- `bili_humanism_visual` 增加可选 `at`（1–4 个秒数；空列表、超过四个或超出 `[0, 时长]` 返回 `VISUAL_AT_INVALID`，JSON 类型不对由宿主的参数校验先拒绝），`media.py frames` 增加 `--at`：每个时间取其后第一帧，片尾不足时取最后一帧。临时视频、预算、尺寸与时长检查不变；索引存到 `visual-at:`，不影响 `visual:`。同一组时刻再取时复用索引，不发网络；换一组时刻就是一次完整下载，旧的帧目录不会自动删除。
+- 新增默认关闭的可信配置 `autoAsr`、`autoAsrMaxSeconds`（默认 1200）和 `autoAsrWallMs`（默认 240000，独立任务墙钟，音轨下载和转写共用，最大 2147483647）。只由 DSH 的 `bili_humanism_read` 经 `Service.autoAsr` 触发，每日取稿和普通 CLI `read` 不会触发。没有文字，或时长至少 60 秒而文字结束于一半之前时，取最低码率音轨转写，临时文件用后删除。转写失败且删不掉时条目带 `mediaCleanup`；转写成功但删不掉时记 `auto_unavailable:VISUAL_CLEANUP_FAILED`，这次转写不保存，下次读取再跑；转写字数更多才保存为 A3，结果记在 `attempts`（`auto_saved`、`auto_not_better`、`auto_skipped_duration`、`auto_unavailable`）。`Service.autoAsr` 上抛取消和持久暂停。
+- 同一 bvid+cid 只记住说明视频本身的结果，不再重跑：产出的转写（`auto_saved`、`auto_not_better`）和格式错误的输出，已存的 A3 文字直接复用。`auto_not_better` 记下听到的字数，文字更少的读取可再跑一次。转写阶段的超时按当时的 `autoAsrWallMs` 记、转写超限按 `maxReadTokens` 记，调大后才再跑；`LOCAL_MEDIA_FAILED` 可能是模型损坏，最多跑三次。环境或模型缺失、下载失败（含还在下载时超时）和时长超限没有真正转写，不记入，修好后可再试。新的 A3 来源 ID 继承旧来源已有的抽帧与弹幕缓存。
+- `media.py asr` 增加可选 `--initial-prompt`、`--hotwords`、`--vad`，不传时调用不变。
+- 新增 `Service.frameContext`：只读缓存，返回某时刻前后的台词和弹幕。
+- `--at` 用合成视频（普通与分片 MP4、MKV）实测，真实读取里也取过一次选定时刻。自动 ASR 在一支没有字幕的真实视频（373 秒）上跑过真实模型，整次读取 27 秒；当时模型路径来自显式的 `asrModelPath`，走默认位置找模型只有合成测试。其余只用合成响应和替身媒体进程验证。
+
+## 未发布 — 来源数据：弹幕与短链
+
+- 新增 `lib/danmaku.mjs`：解析弹幕 XML（解码实体、去控制字符、只留模式 1–6、丢弃特殊池与超过 80 字的条目、最多 6000 条并优先保留高权重），按时间窗计数汇总并挑选峰值。程序只做计数，不做解读。
+- 新增只读通道 `danmaku`：仅 `https://api.bilibili.com/x/v1/dm/list.so?oid=<数字>`，不带 Cookie，沿用 JSON 字节上限和 401/403/412/429 暂停，解压后最多 16 MiB。HTTP 200 的验证码页或风险码同样持久暂停。正文（可有 BOM、空白和 XML 声明）以 `<i>` 开头才算答复，否则 `DANMAKU_INVALID`；解压超限直接判无效，不退回压缩字节。
+- `Service.danmaku` 在独立任务预算内对每份来源最多成功取一次并缓存；失败明确返回 `unavailable` 且不缓存，取消和持久暂停照常上抛。`danmakuAround` 只读缓存。每日取稿不调用。
+- `read` 接受 `https://b23.tv/<code>`、`b23.tv/<code>` 及 `bili2233.cn` 的同样写法：单次 GET、不带 Cookie、不跟随、不请求 Location，只从跳转地址取 BV 和数字 `p`；401/403/412/429 和其他读取一样持久暂停，其他 HTTP 答复或不合格的跳转地址一律 `INVALID_VIDEO`，传输失败是 `NETWORK_FAILED`。解析成功缓存 6 小时，失败不缓存。
+- 合成响应之外，用隔离 dataDir 做过四次低次数的真实读取，其中一次走 `b23.tv` 短链：短链解析成功，四次弹幕请求都有答复（一支视频没有弹幕）。短链缓存只有合成测试。每日取稿不碰这两条通道，有测试盯着。
+
+## 未发布 — 长来源取不到画面与清理
+
+- 已知时长时，DASH 选轨优先取估算字节不超过媒体上限 90% 的最大短边，都放不下时取最低码率；备用地址不会回到已排除的大轨。时长未知时行为不变。此前总选最高 480p，较长的来源下载超过 32 MiB 后返回 `RESPONSE_TOO_LARGE`，一张画面都没有。这些来源现在会走到解码，所以设了任务总时限（`limits.wallMs`）时，解码比它早 5 秒放弃，解不完时只丢画面，文字照常返回。
+- 删除临时媒体在 EBUSY、EPERM 时重试最多 2 秒。Windows 上 venv 的 `python.exe` 是启动器，取消或超时杀掉它之后，真正的解释器还占着输入文件，此前删除当场失败，临时视频留在 `media-intermediates`，错误带上 `mediaCleanup`。其他错误和拒绝删除不重试。
+
 ## 1.11.5 — 2026-11-11
 
 ### 取消默认任务总时限

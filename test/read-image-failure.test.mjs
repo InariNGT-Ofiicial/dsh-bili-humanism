@@ -22,7 +22,7 @@ function harness(t, mode, route = "A1", criticalCode, options = {}) {
     inputs = [],
     controller = new AbortController();
   const previous = Object.fromEntries(
-    ["readVisual", "visual", "visualFrames"].map((k) => [
+    ["readVisual", "visual", "visualFrames", "danmaku"].map((k) => [
       k,
       Service.prototype[k],
     ]),
@@ -85,6 +85,12 @@ function harness(t, mode, route = "A1", criticalCode, options = {}) {
   };
   Service.prototype.visual = async () => ({ result: visual });
   Service.prototype.visualFrames = () => visual;
+  // The read tool asks for danmaku once the frames are ready. Answer here so
+  // this file stays off the network.
+  Service.prototype.danmaku = async () => ({
+    status: "unavailable",
+    error: "NETWORK_FAILED",
+  });
   const attachments = {
     imageLimits: {
       maxImageBytes: 4194304,

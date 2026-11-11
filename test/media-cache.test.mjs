@@ -433,6 +433,7 @@ test("registered DSH read, import and source tools preserve the reused ASR ID an
     if (path === "/x/web-interface/nav") return json(wbiNav);
     if (path === "/x/player/wbi/v2")
       return json({ code: 0, data: { subtitle: { subtitles: [] } } });
+    if (path === "/x/v1/dm/list.so") return new Response("<i></i>");
     assert.fail("Unexpected synthetic tool endpoint");
   };
   t.after(() => {
@@ -473,7 +474,8 @@ test("registered DSH read, import and source tools preserve the reused ASR ID an
   assert.equal(reused.result.next_offset, 1);
   assert.equal(reused.result.reusedLocalSource, true);
   assert.equal(reused.usage.requests, 3);
-  assert.equal(requests, 6);
+  // Three per read, plus one danmaku fetch for each of the two reading IDs in its own task.
+  assert.equal(requests, 8);
   const source = await call("source", {
     readingId: reused.result.id,
     offset: reused.result.next_offset,

@@ -12,14 +12,19 @@ import {
   renameSync,
   symlinkSync,
   writeFileSync,
+  rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { Service } from "../lib/service.mjs";
-import { temporaryVideo, videoTrack } from "../lib/visual-media.mjs";
-import { safeError } from "../lib/errors.mjs";
+import {
+  cleanupVideo,
+  temporaryVideo,
+  videoTrack,
+} from "../lib/visual-media.mjs";
+import { Fault, safeError } from "../lib/errors.mjs";
 
 const cdn = "https://synthetic.bilivideo.com/video.mp4";
 const track = {
@@ -253,6 +258,134 @@ test("CDN candidates preserve selected quality and dimensions, include backups, 
     }).alternatives,
     [backup],
   );
+});
+
+test("a known duration selects the largest short side expected to fit 90% of the media cap", () => {
+  const sd = {
+    ...track,
+    id: 16,
+    width: 640,
+    height: 360,
+    bandwidth: 1000,
+    baseUrl: "https://sd.bilivideo.com/video.mp4",
+  };
+  const low = {
+    ...track,
+    id: 6,
+    width: 426,
+    height: 240,
+    bandwidth: 500,
+    baseUrl: "https://low.bilivideo.com/video.mp4",
+  };
+  const pick = (duration, ...video) =>
+    videoTrack({ dash: { video } }, duration);
+  // 90% of 32 MiB is 30198988.8 bytes: 2415919 bit/s fits 100 s, 2415920 does not.
+  assert.equal(pick(100, { ...track, bandwidth: 2415919 }, sd).quality, 32);
+  assert.equal(pick(100, { ...track, bandwidth: 2415920 }, sd).quality, 16);
+  assert.equal(
+    pick(
+      100,
+      { ...track, bandwidth: 2415920 },
+      { ...sd, bandwidth: 2415920 },
+      low,
+    ).quality,
+    6,
+  );
+  assert.equal(
+    pick(
+      100,
+      { ...track, bandwidth: 900, baseUrl: "https://more.bilivideo.com/v.mp4" },
+      { ...track, bandwidth: 500, baseUrl: "https://less.bilivideo.com/v.mp4" },
+      sd,
+    ).bandwidth,
+    500,
+  );
+  // Portrait sources compare by short side too.
+  assert.equal(
+    pick(100, { ...track, width: 480, height: 852, bandwidth: 2000 }, sd).width,
+    480,
+  );
+  // Nothing fits: the lowest bitrate, whatever its size.
+  assert.equal(
+    pick(
+      1000000,
+      { ...track, bandwidth: 300 },
+      { ...sd, bandwidth: 200 },
+      { ...low, bandwidth: 400 },
+    ).quality,
+    16,
+  );
+  // Unknown duration keeps the size-first choice however large the track is.
+  for (const unknown of [undefined, null, NaN, 0, -1, Infinity])
+    assert.equal(
+      pick(unknown, { ...track, bandwidth: 20000000 }, sd).quality,
+      32,
+      String(unknown),
+    );
+  const durl = { quality: 32, durl: [{ url: cdn, size: 100, length: 4000 }] };
+  assert.equal(videoTrack(durl, 1000000).transport, "durl");
+});
+
+test("fallback addresses never reintroduce a variant ruled out as too large", () => {
+  const fit = "https://fit.bilivideo.com/video.mp4";
+  const fitBackup = "https://fit-backup.bilivideo.com/video.mp4";
+  const large = "https://large.bilivideo.com/video.mp4";
+  const video = [
+    { ...track, bandwidth: 1000, baseUrl: fit, backupUrl: [fitBackup] },
+    { ...track, bandwidth: 20000000, baseUrl: large },
+  ];
+  const chosen = videoTrack({ dash: { video } }, 3600);
+  assert.equal(chosen.url, fit);
+  assert.deepEqual(chosen.alternatives, [fitBackup]);
+  const fallback = videoTrack({ dash: { video } }, 10000000);
+  assert.equal(fallback.url, fit);
+  assert.deepEqual(fallback.alternatives, [fitBackup]);
+  assert.deepEqual(videoTrack({ dash: { video } }).alternatives, [
+    fitBackup,
+    large,
+  ]);
+});
+
+test("decoding gives up before the task wall, so a slow long source costs the images and not the text", async (t) => {
+  const f = fixture(t, { limits: { wallMs: 60000 } });
+  await visual(f);
+  const { argv } = f.children[0];
+  const wall = Number(argv[argv.indexOf("--max-wall-seconds") + 1]);
+  assert.ok(wall > 0 && wall <= 55, String(wall));
+  cleaned(f);
+});
+
+test("visual passes the reading duration, so a long source downloads the track that fits", async (t) => {
+  const f = fixture(t, {
+    duration: 3600,
+    data: {
+      quality: 32,
+      dash: {
+        video: [
+          {
+            ...track,
+            bandwidth: 300000,
+            baseUrl: "https://large.bilivideo.com/video.mp4",
+          },
+          {
+            ...track,
+            id: 16,
+            width: 640,
+            height: 360,
+            bandwidth: 60000,
+            baseUrl: "https://fit.bilivideo.com/video.mp4",
+          },
+        ],
+      },
+    },
+  });
+  // The synthetic decoder reports four seconds; only the download matters here.
+  await assert.rejects(visual(f), { code: "INVALID_VISUAL_MANIFEST" });
+  assert.deepEqual(
+    f.calls.slice(1).map((call) => new URL(call.url).hostname),
+    ["fit.bilivideo.com"],
+  );
+  cleaned(f);
 });
 
 test("visual recovers a reset first CDN using a same-quality backup within the shared budget", async (t) => {
@@ -596,4 +729,68 @@ test("ordinary local-frames still preserves the user input and uses configured i
       }),
     (e) => e.code === "INVALID_PYTHON_PATH",
   );
+});
+
+test("removal waits out a file still held by a dying process, within a bound", async () => {
+  for (const code of ["EBUSY", "EPERM"]) {
+    let calls = 0;
+    await cleanupVideo({
+      cleanup() {
+        calls += 1;
+        if (calls < 3) throw Object.assign(new Error("held"), { code });
+      },
+    });
+    assert.equal(calls, 3);
+  }
+  // Still held at the bound: reported the same way as any other failed removal.
+  const held = {
+    calls: 0,
+    cleanup() {
+      this.calls += 1;
+      throw Object.assign(new Error("held"), { code: "EBUSY" });
+    },
+  };
+  const failure = new Fault("LOCAL_MEDIA_FAILED");
+  const started = Date.now();
+  await cleanupVideo(held, failure, 120);
+  assert.ok(held.calls > 1);
+  assert.ok(Date.now() - started < 1500);
+  assert.equal(failure.mediaCleanup, "refused_or_failed");
+  await assert.rejects(cleanupVideo(held, undefined, 0), {
+    code: "VISUAL_CLEANUP_FAILED",
+  });
+  // A refusal is an answer, and anything else is not a held file either.
+  for (const cause of [
+    new Fault("VISUAL_CLEANUP_REFUSED"),
+    new Error("other"),
+  ]) {
+    let calls = 0;
+    const flagged = new Fault("LOCAL_MEDIA_FAILED");
+    await cleanupVideo(
+      {
+        cleanup() {
+          calls += 1;
+          throw cause;
+        },
+      },
+      flagged,
+    );
+    assert.equal(calls, 1);
+    assert.equal(flagged.mediaCleanup, "refused_or_failed");
+  }
+});
+
+test("removal retries a real file that only becomes removable later", async (t) => {
+  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "bili-cleanup-")));
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }));
+  const owned = temporaryVideo(dataDir);
+  owned.write(Buffer.from("SYNTHETIC"));
+  let held = 2;
+  await cleanupVideo({
+    cleanup() {
+      if (held-- > 0) throw Object.assign(new Error("held"), { code: "EBUSY" });
+      owned.cleanup();
+    },
+  });
+  assert.equal(existsSync(owned.path), false);
 });

@@ -355,7 +355,7 @@ test("registered visual tools expose IDs and offsets, never model-supplied paths
   );
   assert.deepEqual(
     Object.keys(tools.get("bili_humanism_visual").parameters.properties),
-    ["readingId"],
+    ["readingId", "at"],
   );
   assert.deepEqual(
     Object.keys(tools.get("bili_humanism_frames").parameters.properties),
