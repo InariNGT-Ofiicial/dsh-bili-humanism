@@ -16,7 +16,7 @@
 
 - 抽帧分页铺开全片：第一页取四等分每段中心最近的帧，已缓存的弹幕峰值优先替换所在段的中心；后续页填最大的空隙，最后几页只剩余下的帧。每页按时间排序，`frameOffset` 与 `nextOffset` 仍是顺序中的位置。顺序写入 `visual:` 索引后，之后才到的弹幕不改变翻页；旧版索引第一次读取时补上。
 - `bili_humanism_visual` 增加可选 `at`（1–4 个秒数；空列表、超过四个或超出 `[0, 时长]` 返回 `VISUAL_AT_INVALID`，JSON 类型不对由宿主的参数校验先拒绝），`media.py frames` 增加 `--at`：每个时间取其后第一帧，片尾不足时取最后一帧。临时视频、预算、尺寸与时长检查不变；索引存到 `visual-at:`，不影响 `visual:`。同一组时刻再取时复用索引，不发网络；换一组时刻就是一次完整下载，旧的帧目录不会自动删除。
-- 新增默认关闭的可信配置 `autoAsr`、`autoAsrMaxSeconds`（默认 1200）和 `autoAsrWallMs`（默认 240000，独立任务墙钟，音轨下载和转写共用）。只由 DSH 的 `bili_humanism_read` 经 `Service.autoAsr` 触发，每日取稿和普通 CLI `read` 不会触发。没有文字，或时长至少 60 秒而文字结束于一半之前时，取最低码率音轨转写，临时文件用后删除。转写失败且删不掉时条目带 `mediaCleanup`；转写成功但删不掉时记 `auto_unavailable:VISUAL_CLEANUP_FAILED`，这次转写不保存，下次读取再跑；转写字数更多才保存为 A3，结果记在 `attempts`（`auto_saved`、`auto_not_better`、`auto_skipped_duration`、`auto_unavailable`）。`Service.autoAsr` 上抛取消和持久暂停。
+- 新增默认关闭的可信配置 `autoAsr`、`autoAsrMaxSeconds`（默认 1200）和 `autoAsrWallMs`（默认 240000，独立任务墙钟，音轨下载和转写共用，最大 2147483647）。只由 DSH 的 `bili_humanism_read` 经 `Service.autoAsr` 触发，每日取稿和普通 CLI `read` 不会触发。没有文字，或时长至少 60 秒而文字结束于一半之前时，取最低码率音轨转写，临时文件用后删除。转写失败且删不掉时条目带 `mediaCleanup`；转写成功但删不掉时记 `auto_unavailable:VISUAL_CLEANUP_FAILED`，这次转写不保存，下次读取再跑；转写字数更多才保存为 A3，结果记在 `attempts`（`auto_saved`、`auto_not_better`、`auto_skipped_duration`、`auto_unavailable`）。`Service.autoAsr` 上抛取消和持久暂停。
 - 同一 bvid+cid 只记住说明视频本身的结果，不再重跑：产出的转写（`auto_saved`、`auto_not_better`）和格式错误的输出，已存的 A3 文字直接复用。`auto_not_better` 记下听到的字数，文字更少的读取可再跑一次。转写阶段的超时按当时的 `autoAsrWallMs` 记、转写超限按 `maxReadTokens` 记，调大后才再跑；`LOCAL_MEDIA_FAILED` 可能是模型损坏，最多跑三次。环境或模型缺失、下载失败（含还在下载时超时）和时长超限没有真正转写，不记入，修好后可再试。新的 A3 来源 ID 继承旧来源已有的抽帧与弹幕缓存。
 - `media.py asr` 增加可选 `--initial-prompt`、`--hotwords`、`--vad`，不传时调用不变。
 - 新增 `Service.frameContext`：只读缓存，返回某时刻前后的台词和弹幕。

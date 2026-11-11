@@ -134,7 +134,7 @@ export const Config = z.object({
   autoAsrWallMs: z
     .natural()
     .min(1)
-    .max(Number.MAX_SAFE_INTEGER)
+    .max(2147483647)
     .default(240000)
     .description(
       "Wall-time budget in milliseconds of one automatic ASR task, separate from the read task's. Not a model tool parameter.",

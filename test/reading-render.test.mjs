@@ -1291,6 +1291,11 @@ test("auto ASR config is declared and defaulted, and reaches status", (t) => {
   assert.equal(defaults.autoAsrWallMs, 240000);
   assert.throws(() => plugin.Config({ autoAsrMaxSeconds: 0 }));
   assert.throws(() => plugin.Config({ autoAsrWallMs: -1 }));
+  assert.throws(() => plugin.Config({ autoAsrWallMs: 2147483648 }));
+  assert.equal(
+    plugin.Config({ autoAsrWallMs: 2147483647 }).autoAsrWallMs,
+    2147483647,
+  );
   const service = new Service({
     dataDir: mkdtempSync(join(tmpdir(), "humanism-render-config-")),
     autoAsr: true,

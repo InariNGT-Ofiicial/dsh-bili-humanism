@@ -575,6 +575,7 @@ test("trusted auto ASR config rejects invalid values", (t) => {
     { autoAsrMaxSeconds: "1200" },
     { autoAsrWallMs: -1 },
     { autoAsrWallMs: Infinity },
+    { autoAsrWallMs: 2147483648 },
   ])
     assert.throws(() => new Service({ dataDir: root, ...config }), {
       code: "INVALID_AUTO_ASR",
