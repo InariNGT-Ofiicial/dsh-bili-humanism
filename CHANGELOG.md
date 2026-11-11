@@ -9,7 +9,7 @@
 - 模型看到的内容与结构化值分开，结构化值保持完整。`renderReadingText` 输出单行 JSON 头（去掉 `tokenBudget`、`usage`、`cached`、`deduplicated`、`networkSource`、`reusedLocalSource`、`coverage` 的 `missing` 和 `note`、`attempts` 的 `note` 和长说明；`subtitleSource` 只留 `subtitleVerification`）、纯文本转写（`[mm:ss] 文字`，时长满一小时用 `[h:mm:ss]`，相邻片段合并到 15 秒或 80 字，间隔 5 秒以上另起一行，一字不丢）和不超过 1800 字符的弹幕块。`bili_humanism_source` 用同样的转写格式。
 - 画面头部压成一行状态加一句说明，图片标签改为 `[mm:ss] frame | said: … | danmaku: …`。覆盖提醒只在头部出现一次；`at` 取的帧说明这是选定时刻，不说铺开全片；第一页之后的页说明是在填空隙。来源文字里的换行压成空格，不能伪造输出行。
 - 来源文字也不能冒充程序算出的内容：图片标签字段值里的 `|` 换成 `｜`；弹幕文字里的 ` ×数字` 和 ` / ` 换成 ` x数字` 和 ` ／ `，账本里存的文字和转写正文不变；`frameContext` 的弹幕逐条放进 80 字，放不下的截短文字、不截次数；头部 JSON 转义 U+0085、U+2028、U+2029。
-- 现有测试的改动：`media-cache` 的请求总数从 6 改为 8，因为读取工具每个来源 ID 多取一次弹幕；`visual-output` 的参数列表多了 `at`。
+- 现有测试的改动：`media-cache` 的请求总数从 6 改为 8，因为读取工具每个来源 ID 多取一次弹幕；`visual-output` 的参数列表多了 `at`；`read-image-failure` 的替身多了 `Service.danmaku`，否则读取工具取弹幕那一步会在这个文件里发出真实请求。
 - 合成响应和替身媒体进程之外，在真实读取里核对过模型看到的文字：一支约 22 分钟、908 段字幕的视频，从约 11.4 万字符降到约 1.2 万字符。打包后装进真实 DSH Desktop 0.2.1-rc.5（不在声明的实测范围内），核对过请求里的工具说明和一次真实读取的结果。`npm run test:host` 未在本地跑。
 
 ## 未发布 — 画面分页、选定时刻与自动本地 ASR
