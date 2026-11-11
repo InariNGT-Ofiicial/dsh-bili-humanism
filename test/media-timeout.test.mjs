@@ -126,3 +126,30 @@ for (const mode of ["wall", "cancel"]) {
     assert.ok(f.calls.every((path) => path === "/media.m4s"));
   });
 }
+
+for (const mode of ["cancel", "pause"]) {
+  test(`stalled media without a wall cap obeys persistent ${mode}`, async (t) => {
+    let network,
+      finished = false;
+    const f = await fixture(t, (_request, response, later) => {
+      response.on("finish", () => {
+        finished = true;
+      });
+      stream(response, bytes, later, 1500);
+      later(() => {
+        if (mode === "cancel")
+          network.store.setControl("cancel:" + network.budget.id, true);
+        else network.store.pause("SYNTHETIC_TEST_PAUSE");
+      }, 100);
+    });
+    network = f.network({ wallMs: null });
+    await assert.rejects(
+      firstMediaBytes(network, network.budget, [cdn, backup]),
+      {
+        code: mode === "cancel" ? "CANCELLED" : "PERSISTENT_PAUSE",
+      },
+    );
+    assert.equal(finished, false);
+    assert.deepEqual(f.calls, ["/media.m4s"]);
+  });
+}

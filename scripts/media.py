@@ -21,7 +21,7 @@ def check_duration(value,a):
     if a.max_seconds is not None and value>a.max_seconds:raise RuntimeError('Decoded duration exceeds configured limit')
 
 def check_frame(frame,a,started):
-    if time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('Frame wall budget exceeded')
+    if a.max_wall_seconds is not None and time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('Frame wall budget exceeded')
     t=float(frame.time or 0)
     check_dimensions(frame.width,frame.height,a)
     if not math.isfinite(t) or t<0:raise RuntimeError('Invalid decoded timestamp')
@@ -71,7 +71,7 @@ def main():
     p.add_argument('input',type=Path);p.add_argument('output',type=Path)
     p.add_argument('--duration',type=float,required=True)
     p.add_argument('--max-seconds',type=float)
-    p.add_argument('--max-wall-seconds',type=float,default=900)
+    p.add_argument('--max-wall-seconds',type=float)
     p.add_argument('--model',type=Path);p.add_argument('--interval',type=float,default=15)
     p.add_argument('--max-short-side',type=int,default=0);p.add_argument('--max-long-side',type=int,default=0)
     p.add_argument('--max-pixels',type=int,default=0)
@@ -81,6 +81,7 @@ def main():
     a=p.parse_args(bind_text_values(sys.argv[1:]))
     if not a.input.is_file() or not (math.isfinite(a.duration) and 0<a.duration<=9007199254740991):p.error('Existing local file and positive finite representable duration required')
     if a.max_seconds is not None and not (math.isfinite(a.max_seconds) and 0<a.max_seconds<=9007199254740991 and a.duration<=a.max_seconds):p.error('Duration exceeds optional configured limit or limit is invalid')
+    if a.max_wall_seconds is not None and not (math.isfinite(a.max_wall_seconds) and a.max_wall_seconds>=0):p.error('Invalid optional wall time limit')
     times=None
     if a.at is not None:
         times=parse_times(a.at,a.duration)
@@ -97,7 +98,7 @@ def main():
         check_duration(info.duration,a)
         rows=[]
         for s in result:
-            if time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('ASR wall budget exceeded')
+            if a.max_wall_seconds is not None and time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('ASR wall budget exceeded')
             # Only reconcile an ordered tail inside the already accepted decoded duration.
             # Implausible or reversed times remain invalid for the strict importer.
             start=s.start

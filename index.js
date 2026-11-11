@@ -45,7 +45,7 @@ export const Config = z.object({
     .max(Number.MAX_SAFE_INTEGER)
     .required(false)
     .description(
-      "Optional human-configured media source-duration limit in seconds. Omitted means no fixed duration limit; request, byte, wall-time and frame-count budgets still apply. Not a model tool parameter.",
+      "Optional human-configured media source-duration limit in seconds. Omitted means no fixed duration limit; request, byte and frame-count budgets still apply; task wall time is unlimited unless a human sets limits.wallMs. Not a model tool parameter.",
     ),
   maxReadTokens: z
     .natural()
