@@ -108,13 +108,11 @@ test(
 
 for (const mode of ["wall", "cancel"]) {
   test(`slow media obeys ${mode} without fetching a backup`, async (t) => {
-    const f = await fixture(t, (_request, response, later) =>
-      stream(response, bytes, later, 1500),
-    );
     const controller = new AbortController();
-    const timer =
-      mode === "cancel" ? setTimeout(() => controller.abort(), 150) : null;
-    t.after(() => clearTimeout(timer));
+    const f = await fixture(t, (_request, response, later) => {
+      stream(response, bytes, later, 1500);
+      if (mode === "cancel") later(() => controller.abort(), 150);
+    });
     const network = f.network({
       wallMs: mode === "wall" ? 300 : 5000,
       signal: controller.signal,
