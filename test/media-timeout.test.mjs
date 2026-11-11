@@ -121,6 +121,8 @@ for (const mode of ["wall", "cancel"]) {
       firstMediaBytes(network, network.budget, [cdn, backup]),
       { code: mode === "wall" ? "WALL_BUDGET" : "CANCELLED" },
     );
-    assert.deepEqual(f.calls, ["/media.m4s"]);
+    // A tiny wall budget can expire before loopback accepts the first request.
+    assert.ok(f.calls.length <= 1);
+    assert.ok(f.calls.every((path) => path === "/media.m4s"));
   });
 }
