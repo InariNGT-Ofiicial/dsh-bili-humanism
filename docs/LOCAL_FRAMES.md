@@ -79,9 +79,9 @@ node bin/cli.mjs local-asr READING_ID /your/private/downloaded-audio.m4s
 - 环境或模型缺失、下载或转写失败时记 `auto_unavailable` 和错误码，文字保持原样，读取照常返回。取消会中止这次读取；持久暂停同样记 `auto_unavailable`，已取得的文字仍返回，暂停继续生效。
 - 音轨取最低码率，遵守 32 MiB 下载上限，临时文件用后删除；进程刚退出还占着文件时重试最多 2 秒。仍删不掉时，转写失败的条目带 `mediaCleanup: refused_or_failed`，模型看到的头部写作 `…:mediaCleanup=refused_or_failed`；转写成功的记 `auto_unavailable:VISUAL_CLEANUP_FAILED`，这次转写不保存，下次读取再跑。两种情况文件都留在 `media-intermediates`，需人工清理。标题清理控制字符、截到 120 字后作为单独参数传给本地语音模型做提示，不经 shell。
 - 转写字数多于已有文字才保存为 A3，来源 ID 随之变化，已取的抽帧与弹幕缓存跟过去；否则保留原文字，记 `auto_not_better`。这个结论只对文字不少于当时听到字数的读取成立，文字更少的读取会再跑一次。
-- 按 bvid+cid 只记住说明视频本身的结果，不重跑：产出的转写和格式错误的输出（`ASR_OUTPUT_INVALID`、`INVALID_TIMESTAMP` 等）；已存的 A3 直接复用。超时（`WALL_BUDGET`）调大 `autoAsrWallMs` 后才再跑，转写超过 `maxReadTokens` 同理。`LOCAL_MEDIA_FAILED` 可能是模型损坏（`doctor` 不加载模型），同一视频最多跑三次，这之内修好会自己恢复。没有真正转写的情况（缺环境、下载失败、超长）不记入，修好后可再试。
+- 按 bvid+cid 只记住说明视频本身的结果，不重跑：产出的转写和格式错误的输出（`ASR_OUTPUT_INVALID`、`INVALID_TIMESTAMP` 等）；已存的 A3 直接复用。转写阶段的超时（`WALL_BUDGET`）调大 `autoAsrWallMs` 后才再跑，转写超过 `maxReadTokens` 同理。`LOCAL_MEDIA_FAILED` 可能是模型损坏（`doctor` 不加载模型），同一视频最多跑三次，这之内修好会自己恢复。没有真正转写的情况（缺环境、下载失败或还在下载时超时、超长）不记入，修好后可再试。
 - 跑满三次后想重试，可用上面的 `local-asr` 显式入口。它走 90 秒的普通任务预算，这个上限不能调大，转写超过 90 秒的来源用它跑不完。
-- `autoAsrWallMs`（默认 240000）是这一任务单独的墙钟预算。CPU 上转写可能比这慢，长来源超时后明确记为 `auto_unavailable`，不写入半份文字。转写期间同一账本的其他任务会得到 `TASK_BUSY`，每日取稿延后。当前配置见 `status.media.autoAsr`。
+- `autoAsrWallMs`（默认 240000）是这一任务单独的墙钟预算，音轨下载和转写共用；音轨正文和其他媒体正文一样使用任务剩余墙钟时间，慢或卡住的音轨最长可占满它。CPU 上转写可能比这慢，长来源超时后明确记为 `auto_unavailable`，不写入半份文字。下载和转写期间同一账本的其他任务会得到 `TASK_BUSY`，每日取稿延后。当前配置见 `status.media.autoAsr`。
 
 **装依赖不能让纯文本模型接收图片。** 抽帧就绪与宿主支持图片、附件交付、模型确实读过画面是不同状态。纯文本路由仍明确返回未取得画面，不更改用户模型或把字幕推断冒充视觉识别。
 
