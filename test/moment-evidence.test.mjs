@@ -414,7 +414,9 @@ test("an index stored by an older version pages by the spread order and gains it
 });
 
 test("at passes chosen times to the same bounded decoder, stores apart and keeps the output shape", async (t) => {
-  const f = fixture(t, { config: { autoAsr: false } });
+  const f = fixture(t, {
+    config: { autoAsr: false, limits: { wallMs: 60000 } },
+  });
   const reading = f.seed();
   const sampled = (await f.service.visual(reading.id)).result;
   const index = f.service.store.getControl("visual:" + reading.id);
@@ -430,7 +432,9 @@ test("at passes chosen times to the same bounded decoder, stores apart and keeps
   assert.equal(flag(argv, "--max-short-side"), "480");
   assert.equal(flag(argv, "--max-long-side"), "1920");
   assert.equal(flag(argv, "--max-pixels"), "921600");
-  assert.ok(flag(argv, "--max-wall-seconds"));
+  assert.ok(argv.includes("--max-wall-seconds"));
+  const wall = Number(flag(argv, "--max-wall-seconds"));
+  assert.ok(wall > 0 && wall <= 55, String(wall));
   assert.equal(existsSync(argv[2]), false);
   f.clean();
   assert.deepEqual(
@@ -592,6 +596,12 @@ test("trusted auto ASR config rejects invalid values", (t) => {
     maxSeconds: 60,
     wallMs: 1000,
   });
+  const widest = new Service({
+    dataDir: mkdtempSync(join(tmpdir(), "humanism-auto-config-")),
+    autoAsrWallMs: 2147483647,
+  });
+  t.after(() => widest.close());
+  assert.equal(widest.status().media.autoAsr.wallMs, 2147483647);
 });
 
 test("auto ASR runs for no text, or text ending before half of at least 60 seconds", async (t) => {
