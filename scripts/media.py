@@ -23,7 +23,7 @@ def main():
     p.add_argument('input',type=Path);p.add_argument('output',type=Path)
     p.add_argument('--duration',type=float,required=True)
     p.add_argument('--max-seconds',type=float)
-    p.add_argument('--max-wall-seconds',type=float,default=900)
+    p.add_argument('--max-wall-seconds',type=float)
     p.add_argument('--model',type=Path);p.add_argument('--interval',type=float,default=15)
     p.add_argument('--max-short-side',type=int,default=0);p.add_argument('--max-long-side',type=int,default=0)
     p.add_argument('--max-pixels',type=int,default=0)
@@ -31,6 +31,7 @@ def main():
     a=p.parse_args()
     if not a.input.is_file() or not (math.isfinite(a.duration) and 0<a.duration<=9007199254740991):p.error('Existing local file and positive finite representable duration required')
     if a.max_seconds is not None and not (math.isfinite(a.max_seconds) and 0<a.max_seconds<=9007199254740991 and a.duration<=a.max_seconds):p.error('Duration exceeds optional configured limit or limit is invalid')
+    if a.max_wall_seconds is not None and not (math.isfinite(a.max_wall_seconds) and a.max_wall_seconds>=0):p.error('Invalid optional wall time limit')
     started=time.monotonic()
     if a.mode=='asr':
         if not a.model or not a.model.is_dir():p.error('Existing local faster-whisper model directory required; no model downloads')
@@ -40,7 +41,7 @@ def main():
         check_duration(info.duration,a)
         rows=[]
         for s in result:
-            if time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('ASR wall budget exceeded')
+            if a.max_wall_seconds is not None and time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('ASR wall budget exceeded')
             # Only reconcile an ordered tail inside the already accepted decoded duration.
             # Implausible or reversed times remain invalid for the strict importer.
             start=s.start
@@ -61,7 +62,7 @@ def main():
                 decoded_duration=float(stream.duration*stream.time_base) if stream.duration is not None and stream.time_base else float(container.duration/av.time_base) if container.duration is not None else None
                 if decoded_duration is not None:check_duration(decoded_duration,a)
             for frame in container.decode(video=0):
-                if time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('Frame wall budget exceeded')
+                if a.max_wall_seconds is not None and time.monotonic()-started>a.max_wall_seconds:raise RuntimeError('Frame wall budget exceeded')
                 t=float(frame.time or 0)
                 check_dimensions(frame.width,frame.height,a)
                 if not math.isfinite(t) or t<0:raise RuntimeError('Invalid decoded timestamp')
